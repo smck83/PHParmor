@@ -1,0 +1,84 @@
+# PHParmor example configuration (SPEC section 8.1).
+# Every scalar can be overridden with a PHPARMOR_ env var, e.g.
+#   PHPARMOR_SERVER__READ_HEADER_TIMEOUT=5s
+#   PHPARMOR_UPSTREAMS=http://a:80,http://b:80
+#   PHPARMOR_CONTROLS__PA_FRAME=monitor
+# Unknown keys in this file or unknown PHPARMOR_ variables are errors.
+
+listen: ":8080"
+admin_listen: ":9090"            # never expose publicly
+log_level: info                  # debug | info | warn | error
+shutdown_timeout: 30s            # align with ECS stopTimeout / k8s terminationGracePeriodSeconds
+
+upstreams:
+  - "http://nginx.internal:80"
+
+trusted_proxies:                 # ALB subnets
+  - "10.0.0.0/16"
+
+server:
+  read_header_timeout: 10s
+  body_min_rate_bytes_per_sec: 4096
+  idle_timeout: 75s              # must exceed the ALB idle timeout (60 s default)
+  max_concurrent_requests: 2000
+  max_header_bytes: 32768
+  unknown_host_status: 421       # status for a Host not listed under hosts
+  upstream_dial_timeout: 5s
+  upstream_response_timeout: 120s
+  upstream_probe_interval: 5s    # /readyz upstream TCP probe
+  ready_window: 30s              # /readyz fails if no upstream reached within this window
+
+buffers:
+  memory_per_request: 1MiB
+  memory_global: 256MiB
+  spool_dir: /var/lib/phparmor/spool
+  spool_quota: 2GiB
+  on_overload: reject            # reject | bypass (bypass removes protection)
+
+state:
+  backend: memory                # memory | redis
+  redis_url: ""
+
+php:
+  upload_progress_field: PHP_SESSION_UPLOAD_PROGRESS   # session.upload_progress.name
+  session_cookie_names: [PHPSESSID]                    # session.name
+
+controls:                        # global modes; hosts/routes may override
+  PA-FRAME: enforce
+  PA-HDR: enforce
+  PA-COOKIE-STRIP: off
+  PA-QUERY: enforce
+  PA-URLENC: enforce
+  PA-MPART: enforce
+  PA-UPROG: enforce
+  PA-SESSCOOKIE: enforce
+  PA-STRIKE: monitor
+  PA-RATE: off
+  PA-ROUTE-MPART: monitor
+
+limits:
+  max_body: 32MiB
+  max_parts: 256
+  max_files: 20
+  max_vars: 1000
+  max_nesting: 8
+  max_field_value: 1MiB
+
+# With no hosts listed, every Host is accepted and the global limits apply.
+hosts:
+  - names: ["app.example.com"]
+    cookie_strip: [PHPSESSID]          # this app does not use native sessions
+    controls: { PA-COOKIE-STRIP: enforce }
+    routes:
+      - name: upload                   # optional; used as the metric route label
+        match: { methods: [POST], path_prefix: "/reports/upload" }
+        multipart: allow
+        limits: { max_body: 50MiB, max_files: 5 }
+      - match: { path_prefix: "/" }
+        multipart: deny                # enforced only when PA-ROUTE-MPART is enforce
+        limits: { max_body: 8MiB }
+  - names: ["api.example.com"]
+    routes:
+      - match: { path_prefix: "/" }
+        multipart: deny
+        limits: { max_body: 16MiB }    # JSON payloads
