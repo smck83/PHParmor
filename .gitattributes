@@ -1,3 +1,6 @@
 # Normalise to LF in the repository and in working copies on every OS, so
 # gofmt, shell scripts and the Dockerfile behave the same on Windows as in CI.
 * text=auto eol=lf
+
+# Corpus captures are exact wire bytes (CRLF line endings, binary data).
+test/corpus/**/*.http -text
