@@ -4,9 +4,9 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
 # Pinned lint tool versions (run with go run, not module dependencies).
-STATICCHECK_VERSION ?= 2024.1.1
-GOSEC_VERSION ?= v2.21.4
-GOVULNCHECK_VERSION ?= v1.1.4
+STATICCHECK_VERSION ?= v0.8.2
+GOSEC_VERSION ?= v2.29.0
+GOVULNCHECK_VERSION ?= v1.9.0
 
 .PHONY: build test fuzz lint harness bench image
 
