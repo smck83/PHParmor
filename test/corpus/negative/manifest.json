@@ -1,0 +1,87 @@
+{
+  "backslash-in-filename": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "'\\' in the filename"
+  },
+  "backslash-in-name": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "'\\' in the field name"
+  },
+  "chunked-multipart": {
+    "status": 200,
+    "reaches_upstream": true,
+    "note": "accepted; forwarded canonical with Content-Length"
+  },
+  "cl-and-te": {
+    "status": 200,
+    "reaches_upstream": true,
+    "note": "Content-Length with Transfer-Encoding: Go treats it as chunked; forwarded re-framed"
+  },
+  "comma-media-type": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "PHP reads this as multipart/form-data; it must not bypass inspection"
+  },
+  "content-transfer-encoding": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "Content-Transfer-Encoding part header"
+  },
+  "deep-nesting": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "field name nested 20 levels, over max_nesting (8)"
+  },
+  "duplicate-boundary-param": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "two boundary parameters"
+  },
+  "filename-ext": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "RFC 5987 filename*"
+  },
+  "gzip-multipart": {
+    "status": 415,
+    "reaches_upstream": false,
+    "note": "compressed request body cannot be inspected"
+  },
+  "missing-final-boundary": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "body ends without the closing boundary"
+  },
+  "multipart-on-get": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "body on GET"
+  },
+  "multiple-content-type": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "two Content-Type headers"
+  },
+  "oversized-part-headers": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "8 KiB of extra part headers"
+  },
+  "parts-5000": {
+    "status": 413,
+    "reaches_upstream": false,
+    "note": "5000 parts, over max_parts (256)"
+  },
+  "quote-in-name": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "unescaped '\"' in the field name"
+  },
+  "upload-progress-field": {
+    "status": 403,
+    "reaches_upstream": false,
+    "note": "session upload-progress field in multipart (PA-UPROG)"
+  }
+}

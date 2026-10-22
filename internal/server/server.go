@@ -41,7 +41,7 @@ type Server struct {
 	opts    Options
 	log     *slog.Logger
 	metrics *telemetry.Metrics
-	budget  *spool.Budget
+	pool    *spool.Pool
 	proxy   *httputil.ReverseProxy
 	health  health
 
@@ -89,12 +89,15 @@ func New(cfg *config.Config, opts Options) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		opts:   opts,
-		log:    opts.Logger,
-		budget: spool.NewBudget(int64(cfg.Buffers.MemoryGlobal)),
-		boot:   cfg,
+		opts: opts,
+		log:  opts.Logger,
+		pool: spool.NewPool(poolOptions(cfg)),
+		boot: cfg,
 	}
-	s.metrics = telemetry.NewMetrics(func() float64 { return float64(s.budget.InFlight()) })
+	s.metrics = telemetry.NewMetrics(
+		func() float64 { return float64(s.pool.MemoryInFlight()) },
+		func() float64 { return float64(s.pool.DiskInFlight()) },
+	)
 	s.proxy = proxy.New(proxy.Options{
 		Transport: proxy.NewTransport(proxy.TransportOptions{
 			DialTimeout:     cfg.Server.UpstreamDialTimeout,
@@ -115,6 +118,17 @@ func New(cfg *config.Config, opts Options) (*Server, error) {
 	return s, nil
 }
 
+func poolOptions(cfg *config.Config) spool.PoolOptions {
+	b := cfg.Buffers
+	return spool.PoolOptions{
+		Dir:          b.SpoolDir,
+		PerRequest:   int64(b.MemoryPerRequest),
+		MemoryGlobal: int64(b.MemoryGlobal),
+		DiskQuota:    int64(b.SpoolQuota),
+		Bypass:       b.OnOverload == "bypass",
+	}
+}
+
 // Reload swaps in a new validated config. Settings that need a restart are
 // reported in the log and keep their running values.
 func (s *Server) Reload(cfg *config.Config) error {
@@ -127,7 +141,7 @@ func (s *Server) Reload(cfg *config.Config) error {
 		s.log.Warn("config setting changed but needs a restart to apply", "setting", f)
 	}
 	s.snap.Store(snap)
-	s.budget.SetLimit(int64(cfg.Buffers.MemoryGlobal))
+	s.pool.Configure(poolOptions(cfg))
 	if s.opts.LogLevel != nil {
 		_ = s.opts.LogLevel.UnmarshalText([]byte(cfg.LogLevel))
 	}

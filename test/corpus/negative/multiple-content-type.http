@@ -1,0 +1,12 @@
+POST /upload HTTP/1.1
+Host: corpus.test
+Connection: close
+Content-Type: multipart/form-data; boundary=NegBoundary
+Content-Type: text/plain
+Content-Length: 79
+
+--NegBoundary
+Content-Disposition: form-data; name="a"
+
+1
+--NegBoundary--

@@ -1,9 +1,6 @@
 package server
 
 import (
-	"bytes"
-	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -15,7 +12,6 @@ import (
 	"github.com/smck83/phparmor/internal/inspect/query"
 	"github.com/smck83/phparmor/internal/policy"
 	"github.com/smck83/phparmor/internal/proxy"
-	"github.com/smck83/phparmor/internal/spool"
 	"github.com/smck83/phparmor/internal/telemetry"
 )
 
@@ -101,21 +97,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 7. Buffer the body so it is forwarded with an exact Content-Length.
-	if r.ContentLength != 0 {
-		buf, status, reason := s.bufferBody(cfg, rec, r, int64(m.Route.Limits.MaxBody))
-		if status != 0 {
-			s.reject(rec, ri, status, reason)
-			return
-		}
-		defer buf.Release()
-		ri.BytesIn = int64(len(buf.Data))
-		r.ContentLength = ri.BytesIn
-		if ri.BytesIn == 0 {
-			r.Body = http.NoBody
-		} else {
-			r.Body = io.NopCloser(bytes.NewReader(buf.Data))
-		}
+	// 7. Body: spooled (and canonicalised if multipart) so it is forwarded
+	// with an exact Content-Length.
+	body, rejected := s.prepareBody(rec, r, ri, cfg, route)
+	defer body.Close()
+	if rejected {
+		return
 	}
 	r.TransferEncoding = nil
 	r.Header.Del("Transfer-Encoding")
@@ -170,37 +157,6 @@ func (s *Server) stripCookies(r *http.Request, ri *telemetry.RequestInfo, route 
 		}
 	}
 	ri.AddDecision(d)
-}
-
-// bufferBody reads the request body into memory under the route's maximum
-// and the global budget, enforcing the minimum body read rate. A non-zero
-// status means the request must be rejected.
-func (s *Server) bufferBody(cfg *config.Config, w http.ResponseWriter, r *http.Request, max int64) (*spool.Buffer, int, string) {
-	rc := http.NewResponseController(w)
-	start := time.Now()
-	grace := cfg.Server.ReadHeaderTimeout
-	rate := float64(cfg.Server.BodyMinRateBytesPerSec)
-
-	buf, err := spool.ReadAll(r.Body, s.budget, spool.ReadOptions{
-		Max:      max,
-		SizeHint: r.ContentLength,
-		Bypass:   cfg.Buffers.OnOverload == "bypass",
-		BeforeRead: func(n int64) {
-			allowed := grace + time.Duration(float64(n)/rate*float64(time.Second))
-			_ = rc.SetReadDeadline(start.Add(allowed))
-		},
-	})
-	_ = rc.SetReadDeadline(time.Time{})
-	switch {
-	case err == nil:
-		return buf, 0, ""
-	case errors.Is(err, spool.ErrTooLarge):
-		return nil, http.StatusRequestEntityTooLarge, "body_too_large"
-	case errors.Is(err, spool.ErrOverloaded):
-		return nil, http.StatusServiceUnavailable, "overloaded"
-	default:
-		return nil, http.StatusBadRequest, "body_read_error"
-	}
 }
 
 func (s *Server) reject(w http.ResponseWriter, ri *telemetry.RequestInfo, status int, reason string) {

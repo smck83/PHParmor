@@ -20,9 +20,10 @@ type Metrics struct {
 	ConfigReloads    *prometheus.CounterVec
 }
 
-// NewMetrics registers all metrics on a private registry. bufferInflight
-// reports the bytes currently held by the request buffer budget.
-func NewMetrics(bufferInflight func() float64) *Metrics {
+// NewMetrics registers all metrics on a private registry. bufferInflight and
+// spoolBytes report the request-body bytes currently held in memory and in
+// the spool directory.
+func NewMetrics(bufferInflight, spoolBytes func() float64) *Metrics {
 	reg := prometheus.NewRegistry()
 	m := &Metrics{
 		reg: reg,
@@ -55,8 +56,12 @@ func NewMetrics(bufferInflight func() float64) *Metrics {
 		m.Requests, m.Decisions, m.RequestDuration, m.UpstreamDuration, m.ConfigReloads,
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "phparmor_buffer_bytes_inflight",
-			Help: "Request body bytes currently reserved in the global buffer budget.",
+			Help: "Request body bytes currently reserved in the global memory budget.",
 		}, bufferInflight),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "phparmor_spool_bytes",
+			Help: "Request body bytes currently reserved in the spool directory quota.",
+		}, spoolBytes),
 	)
 	return m
 }

@@ -197,6 +197,9 @@ func mergeLimits(base config.Limits, o config.LimitOverrides) config.Limits {
 	if o.NoBodyMethods != nil {
 		base.NoBodyMethods = *o.NoBodyMethods
 	}
+	if o.AllowedPartHeaders != nil {
+		base.AllowedPartHeaders = *o.AllowedPartHeaders
+	}
 	return base
 }
 

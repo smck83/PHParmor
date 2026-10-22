@@ -4,78 +4,125 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"os"
 	"testing"
 	"testing/iotest"
 )
 
-func TestReadAll(t *testing.T) {
-	body := bytes.Repeat([]byte("x"), 100<<10)
+func newPool(t *testing.T, o PoolOptions) *Pool {
+	t.Helper()
+	if o.Dir == "" {
+		o.Dir = t.TempDir()
+	}
+	return NewPool(o)
+}
+
+func spoolFiles(t *testing.T, dir string) int {
+	t.Helper()
+	es, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(es)
+}
+
+func TestBodyMemoryAndSpill(t *testing.T) {
+	data := bytes.Repeat([]byte("0123456789abcdef"), 8<<10) // 128 KiB
 	tests := []struct {
-		name    string
-		data    []byte
-		hint    int64
-		max     int64
-		budget  int64
-		bypass  bool
-		wantErr error
+		name        string
+		perRequest  int64
+		wantSpilled bool
 	}{
-		{"known length", body, int64(len(body)), 1 << 20, 1 << 20, false, nil},
-		{"unknown length", body, -1, 1 << 20, 1 << 20, false, nil},
-		{"empty", nil, -1, 10, 1 << 20, false, nil},
-		{"exactly max", body, -1, int64(len(body)), 1 << 20, false, nil},
-		{"declared over max", body, int64(len(body)), 10, 1 << 20, false, ErrTooLarge},
-		{"streamed over max", body, -1, 1000, 1 << 20, false, ErrTooLarge},
-		{"lying short length", body, 10, 1 << 20, 1 << 20, false, nil},
-		{"budget exhausted up front", body, int64(len(body)), 1 << 20, 1000, false, ErrOverloaded},
-		{"budget exhausted while growing", body, -1, 1 << 20, 50 << 10, false, ErrOverloaded},
-		{"bypass ignores budget", body, -1, 1 << 20, 10, true, nil},
+		{"fits in memory", 1 << 20, false},
+		{"spills to disk", 16 << 10, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b := NewBudget(tt.budget)
-			buf, err := ReadAll(iotest.HalfReader(bytes.NewReader(tt.data)), b, ReadOptions{Max: tt.max, SizeHint: tt.hint, Bypass: tt.bypass})
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			dir := t.TempDir()
+			p := newPool(t, PoolOptions{Dir: dir, PerRequest: tt.perRequest, MemoryGlobal: 1 << 20, DiskQuota: 1 << 20})
+			b := p.NewBody(1 << 20)
+			if _, err := b.ReadFrom(iotest.HalfReader(bytes.NewReader(data))); err != nil {
+				t.Fatal(err)
 			}
-			if err != nil {
-				if b.InFlight() != 0 {
-					t.Errorf("budget leaked %d bytes on error", b.InFlight())
+			if b.Spilled() != tt.wantSpilled || b.Size() != int64(len(data)) {
+				t.Fatalf("spilled=%v size=%d", b.Spilled(), b.Size())
+			}
+			for i := 0; i < 2; i++ { // readers are independent
+				got, err := io.ReadAll(b.Reader())
+				if err != nil || !bytes.Equal(got, data) {
+					t.Fatalf("read %d: %d bytes, %v", i, len(got), err)
 				}
-				return
 			}
-			if !bytes.Equal(buf.Data, tt.data) {
-				t.Errorf("data mismatch: got %d bytes", len(buf.Data))
+			if tt.wantSpilled {
+				if p.MemoryInFlight() != 0 || p.DiskInFlight() != int64(len(data)) {
+					t.Errorf("after spill mem=%d disk=%d", p.MemoryInFlight(), p.DiskInFlight())
+				}
+				if spoolFiles(t, dir) != 1 {
+					t.Errorf("expected one spool file")
+				}
+				fi, err := os.Stat(b.f.Name())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if perm := fi.Mode().Perm(); perm&0o077 != 0 && os.PathSeparator == '/' {
+					t.Errorf("spool file mode %v, want 0600", perm)
+				}
+			} else if p.MemoryInFlight() < int64(len(data)) {
+				t.Errorf("memory reserved %d < %d", p.MemoryInFlight(), len(data))
 			}
-			if b.InFlight() < int64(len(tt.data)) {
-				t.Errorf("reserved %d < %d", b.InFlight(), len(tt.data))
+			if err := b.Close(); err != nil {
+				t.Fatal(err)
 			}
-			buf.Release()
-			buf.Release()
-			if b.InFlight() != 0 {
-				t.Errorf("budget not returned: %d", b.InFlight())
+			if err := b.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if p.MemoryInFlight() != 0 || p.DiskInFlight() != 0 || spoolFiles(t, dir) != 0 {
+				t.Errorf("not cleaned up: mem=%d disk=%d files=%d", p.MemoryInFlight(), p.DiskInFlight(), spoolFiles(t, dir))
 			}
 		})
 	}
 }
 
-func TestReadAllReadError(t *testing.T) {
-	b := NewBudget(1 << 20)
-	_, err := ReadAll(iotest.ErrReader(io.ErrUnexpectedEOF), b, ReadOptions{Max: 100, SizeHint: -1})
-	if !errors.Is(err, io.ErrUnexpectedEOF) {
-		t.Fatalf("err = %v", err)
+func TestBodyLimits(t *testing.T) {
+	data := bytes.Repeat([]byte("x"), 64<<10)
+	tests := []struct {
+		name string
+		o    PoolOptions
+		max  int64
+		want error
+	}{
+		{"over body max", PoolOptions{PerRequest: 1 << 20, MemoryGlobal: 1 << 20, DiskQuota: 1 << 20}, 1000, ErrTooLarge},
+		{"memory budget exhausted", PoolOptions{PerRequest: 1 << 20, MemoryGlobal: 8 << 10, DiskQuota: 1 << 20}, 1 << 20, ErrOverloaded},
+		{"disk quota exhausted", PoolOptions{PerRequest: 4 << 10, MemoryGlobal: 1 << 20, DiskQuota: 16 << 10}, 1 << 20, ErrOverloaded},
+		{"bypass ignores budgets", PoolOptions{PerRequest: 4 << 10, MemoryGlobal: 1, DiskQuota: 1, Bypass: true}, 1 << 20, nil},
 	}
-	if b.InFlight() != 0 {
-		t.Errorf("budget leaked")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tt.o.Dir = dir
+			p := newPool(t, tt.o)
+			b := p.NewBody(tt.max)
+			_, err := b.ReadFrom(bytes.NewReader(data))
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("err = %v, want %v", err, tt.want)
+			}
+			_ = b.Close()
+			if p.MemoryInFlight() != 0 || p.DiskInFlight() != 0 || spoolFiles(t, dir) != 0 {
+				t.Errorf("leaked: mem=%d disk=%d files=%d", p.MemoryInFlight(), p.DiskInFlight(), spoolFiles(t, dir))
+			}
+		})
 	}
 }
 
-func TestReadAllCallsBeforeRead(t *testing.T) {
-	var calls int
-	_, err := ReadAll(bytes.NewReader([]byte("hello")), NewBudget(1<<20), ReadOptions{
-		Max: 100, SizeHint: 5, BeforeRead: func(int64) { calls++ },
-	})
-	if err != nil || calls == 0 {
-		t.Fatalf("err=%v calls=%d", err, calls)
+func TestBodyReadError(t *testing.T) {
+	p := newPool(t, PoolOptions{PerRequest: 1 << 20, MemoryGlobal: 1 << 20, DiskQuota: 1 << 20})
+	b := p.NewBody(1 << 20)
+	if _, err := b.ReadFrom(iotest.ErrReader(io.ErrUnexpectedEOF)); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("err = %v", err)
+	}
+	_ = b.Close()
+	if _, err := b.Write([]byte("x")); err == nil {
+		t.Error("write after close accepted")
 	}
 }
 

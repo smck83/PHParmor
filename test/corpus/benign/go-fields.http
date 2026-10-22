@@ -1,0 +1,32 @@
+POST /?corpus=go-fields HTTP/1.1
+Host: phparmor-capture:8080
+User-Agent: Go-http-client/1.1
+Content-Length: 804
+Content-Type: multipart/form-data; boundary=079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069
+Accept-Encoding: gzip
+
+--079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069
+Content-Disposition: form-data; name="name"
+
+Alice Example
+--079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069
+Content-Disposition: form-data; name="tags[]"
+
+one
+--079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069
+Content-Disposition: form-data; name="tags[]"
+
+two
+--079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069
+Content-Disposition: form-data; name="addr[home][city]"
+
+Springfield
+--079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069
+Content-Disposition: form-data; name="unicode"
+
+héllo ✓
+--079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069
+Content-Disposition: form-data; name="empty"
+
+
+--079fd71b107aa87b8a6368ff3c6223b24545b862a7157b1d24fcd5213069--

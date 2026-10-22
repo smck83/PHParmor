@@ -1,0 +1,39 @@
+POST /?corpus=java-fields HTTP/1.1
+Accept-Encoding: gzip, x-gzip, deflate
+Host: phparmor-capture:8080
+Content-Length: 847
+Content-Type: multipart/form-data; charset=ISO-8859-1; boundary=tZ2OWLsTbKsubbUu0bELMeTuP7yozBF
+Connection: keep-alive
+User-Agent: Apache-HttpClient/5.4.1 (Java/21.0.12.1)
+
+--tZ2OWLsTbKsubbUu0bELMeTuP7yozBF
+Content-Disposition: form-data; name="name"
+Content-Type: text/plain; charset=UTF-8
+
+Alice Example
+--tZ2OWLsTbKsubbUu0bELMeTuP7yozBF
+Content-Disposition: form-data; name="tags[]"
+Content-Type: text/plain; charset=UTF-8
+
+one
+--tZ2OWLsTbKsubbUu0bELMeTuP7yozBF
+Content-Disposition: form-data; name="tags[]"
+Content-Type: text/plain; charset=UTF-8
+
+two
+--tZ2OWLsTbKsubbUu0bELMeTuP7yozBF
+Content-Disposition: form-data; name="addr[home][city]"
+Content-Type: text/plain; charset=UTF-8
+
+Springfield
+--tZ2OWLsTbKsubbUu0bELMeTuP7yozBF
+Content-Disposition: form-data; name="unicode"
+Content-Type: text/plain; charset=UTF-8
+
+héllo ✓
+--tZ2OWLsTbKsubbUu0bELMeTuP7yozBF
+Content-Disposition: form-data; name="empty"
+Content-Type: text/plain; charset=UTF-8
+
+
+--tZ2OWLsTbKsubbUu0bELMeTuP7yozBF--

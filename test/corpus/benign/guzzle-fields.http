@@ -1,0 +1,36 @@
+POST /?corpus=guzzle-fields HTTP/1.1
+Host: phparmor-capture:8080
+User-Agent: GuzzleHttp/7
+Content-Type: multipart/form-data; boundary=aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874
+Content-Length: 762
+
+--aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874
+Content-Disposition: form-data; name="name"
+Content-Length: 13
+
+Alice Example
+--aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874
+Content-Disposition: form-data; name="tags[]"
+Content-Length: 3
+
+one
+--aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874
+Content-Disposition: form-data; name="tags[]"
+Content-Length: 3
+
+two
+--aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874
+Content-Disposition: form-data; name="addr[home][city]"
+Content-Length: 11
+
+Springfield
+--aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874
+Content-Disposition: form-data; name="unicode"
+Content-Length: 10
+
+héllo ✓
+--aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874
+Content-Disposition: form-data; name="empty"
+
+
+--aed09d5e5fdeafd5c8a59dbe7fa528cec0b14874--

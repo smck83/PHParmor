@@ -24,6 +24,7 @@ import (
 const (
 	ReasonTransferEncoding = "bad_transfer_encoding"
 	ReasonContentLength    = "bad_content_length"
+	ReasonContentType      = "multiple_content_type"
 	ReasonHeaderValue      = "invalid_header_value"
 	ReasonBodyNotAllowed   = "body_not_allowed"
 	ReasonContentEncoding  = "content_encoding"
@@ -44,6 +45,11 @@ func Check(r *http.Request, noBody []string) *policy.Violation {
 	}
 	if cl := r.Header["Content-Length"]; len(cl) > 1 || len(cl) == 1 && !digits(cl[0]) {
 		return bad(ReasonContentLength)
+	}
+	// Which of several Content-Type values PHP uses depends on the web
+	// server in front of it; the body would be classified ambiguously.
+	if len(r.Header["Content-Type"]) > 1 {
+		return bad(ReasonContentType)
 	}
 	for _, vs := range r.Header {
 		for _, v := range vs {

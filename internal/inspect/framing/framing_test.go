@@ -48,6 +48,11 @@ func TestCheck(t *testing.T) {
 			r.Header["Content-Length"] = []string{"+1"}
 			return r
 		}, ReasonContentLength, 400},
+		{"two Content-Type", func() *http.Request {
+			r := httptest.NewRequest("POST", "/", strings.NewReader("a"))
+			r.Header["Content-Type"] = []string{"text/plain", "multipart/form-data; boundary=x"}
+			return r
+		}, ReasonContentType, 400},
 		{"NUL in header value", func() *http.Request {
 			r := httptest.NewRequest("GET", "/", nil)
 			r.Header["X-A"] = []string{"a\x00b"}
