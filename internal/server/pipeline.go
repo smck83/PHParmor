@@ -1,0 +1,194 @@
+package server
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/smck83/phparmor/internal/config"
+	"github.com/smck83/phparmor/internal/policy"
+	"github.com/smck83/phparmor/internal/proxy"
+	"github.com/smck83/phparmor/internal/spool"
+	"github.com/smck83/phparmor/internal/telemetry"
+)
+
+const maxLoggedPath = 2048
+
+// ServeHTTP runs the request pipeline (SPEC section 4). M1 implements the
+// connection limits, host and route policy, body buffering with an exact
+// Content-Length, and forwarding. Controls arrive in later milestones.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	snap := s.snap.Load()
+	cfg := snap.cfg
+
+	id := r.Header.Get("X-Request-ID")
+	if !telemetry.ValidRequestID(id) {
+		id = telemetry.NewRequestID()
+	}
+	peer := proxy.PeerAddr(r.RemoteAddr)
+	ri := &telemetry.RequestInfo{
+		ID:        id,
+		Start:     time.Now(),
+		ClientIP:  proxy.ClientIP(peer, r.Header.Values("X-Forwarded-For"), snap.trusted).String(),
+		HostLabel: policy.LabelUnknownHost,
+		Route:     "-",
+	}
+	ctx := telemetry.WithInfo(r.Context(), ri)
+	r = r.WithContext(ctx)
+	rec := &recorder{ResponseWriter: w}
+	rec.Header().Set("X-Request-ID", id)
+	defer s.finish(rec, r, ri)
+
+	// 1. Global concurrency cap.
+	n := s.inflight.Add(1)
+	defer s.inflight.Add(-1)
+	if n > cfg.Server.MaxConcurrentRequests {
+		s.reject(rec, ri, http.StatusServiceUnavailable, "overloaded")
+		return
+	}
+
+	// 3-4. Host and route policy.
+	m, ok := snap.policy.Resolve(r.Host, r.Method, r.URL.Path)
+	if !ok {
+		s.reject(rec, ri, snap.policy.UnknownHostStatus(), "unknown_host")
+		return
+	}
+	ri.HostLabel, ri.Route = m.Host.Label, m.Route.Label
+
+	// 7. Buffer the body so it is forwarded with an exact Content-Length.
+	if r.ContentLength != 0 {
+		buf, status, reason := s.bufferBody(cfg, rec, r, int64(m.Route.Limits.MaxBody))
+		if status != 0 {
+			s.reject(rec, ri, status, reason)
+			return
+		}
+		defer buf.Release()
+		ri.BytesIn = int64(len(buf.Data))
+		r.ContentLength = ri.BytesIn
+		if ri.BytesIn == 0 {
+			r.Body = http.NoBody
+		} else {
+			r.Body = io.NopCloser(bytes.NewReader(buf.Data))
+		}
+	}
+	r.TransferEncoding = nil
+	r.Header.Del("Transfer-Encoding")
+
+	// 9. Forward.
+	t := &proxy.Target{
+		Upstream:    snap.balancer.Next(),
+		Peer:        peer,
+		PeerTrusted: proxy.Trusted(peer, snap.trusted),
+		RequestID:   id,
+	}
+	s.proxy.ServeHTTP(rec, r.WithContext(proxy.WithTarget(ctx, t)))
+}
+
+// bufferBody reads the request body into memory under the route's maximum
+// and the global budget, enforcing the minimum body read rate. A non-zero
+// status means the request must be rejected.
+func (s *Server) bufferBody(cfg *config.Config, w http.ResponseWriter, r *http.Request, max int64) (*spool.Buffer, int, string) {
+	rc := http.NewResponseController(w)
+	start := time.Now()
+	grace := cfg.Server.ReadHeaderTimeout
+	rate := float64(cfg.Server.BodyMinRateBytesPerSec)
+
+	buf, err := spool.ReadAll(r.Body, s.budget, spool.ReadOptions{
+		Max:      max,
+		SizeHint: r.ContentLength,
+		Bypass:   cfg.Buffers.OnOverload == "bypass",
+		BeforeRead: func(n int64) {
+			allowed := grace + time.Duration(float64(n)/rate*float64(time.Second))
+			_ = rc.SetReadDeadline(start.Add(allowed))
+		},
+	})
+	_ = rc.SetReadDeadline(time.Time{})
+	switch {
+	case err == nil:
+		return buf, 0, ""
+	case errors.Is(err, spool.ErrTooLarge):
+		return nil, http.StatusRequestEntityTooLarge, "body_too_large"
+	case errors.Is(err, spool.ErrOverloaded):
+		return nil, http.StatusServiceUnavailable, "overloaded"
+	default:
+		return nil, http.StatusBadRequest, "body_read_error"
+	}
+}
+
+func (s *Server) reject(w http.ResponseWriter, ri *telemetry.RequestInfo, status int, reason string) {
+	ri.Reason = reason
+	if status == http.StatusServiceUnavailable {
+		w.Header().Set("Retry-After", "1")
+	}
+	proxy.WriteError(w, status, ri.ID)
+}
+
+// finish writes the access log line and request metrics.
+func (s *Server) finish(rec *recorder, r *http.Request, ri *telemetry.RequestInfo) {
+	total := time.Since(ri.Start)
+	upstream, upDur := ri.Upstream()
+	decisions := ri.Decisions()
+	for _, d := range decisions {
+		s.metrics.Decisions.WithLabelValues(d.Control, string(d.Outcome)).Inc()
+	}
+	status := strconv.Itoa(rec.status)
+	s.metrics.Requests.WithLabelValues(ri.HostLabel, ri.Route, status).Inc()
+	s.metrics.RequestDuration.Observe(total.Seconds())
+
+	path := r.URL.Path
+	if len(path) > maxLoggedPath {
+		path = path[:maxLoggedPath]
+	}
+	attrs := []slog.Attr{
+		slog.String("request_id", ri.ID),
+		slog.String("host", ri.HostLabel),
+		slog.String("route", ri.Route),
+		slog.String("method", r.Method),
+		slog.String("path", path),
+		slog.Int("status", rec.status),
+		slog.Int64("bytes_in", ri.BytesIn),
+		slog.Int64("bytes_out", rec.bytes),
+		slog.String("client_ip", ri.ClientIP),
+		slog.Float64("total_ms", float64(total.Microseconds())/1000),
+		slog.Any("decisions", decisions),
+	}
+	if upstream != "" {
+		attrs = append(attrs,
+			slog.String("upstream", upstream),
+			slog.Float64("upstream_ms", float64(upDur.Microseconds())/1000))
+	}
+	if ri.Reason != "" {
+		attrs = append(attrs, slog.String("reason", ri.Reason))
+	}
+	s.log.LogAttrs(r.Context(), slog.LevelInfo, "access", attrs...)
+}
+
+// recorder captures the final status and bytes written for the access log.
+type recorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (r *recorder) WriteHeader(code int) {
+	if r.status == 0 && code >= 200 {
+		r.status = code
+	}
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *recorder) Write(b []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += int64(n)
+	return n, err
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (r *recorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }

@@ -1,0 +1,9 @@
+# Default config baked into the container image at /etc/phparmor/config.yaml.
+#
+# It relies on the built-in defaults (SPEC section 8.1). Set at least the
+# upstream with an env var, for example:
+#   PHPARMOR_UPSTREAMS=http://nginx:80
+#   PHPARMOR_TRUSTED_PROXIES=10.0.0.0/16
+# For per-host routes, mount your own file over /etc/phparmor/config.yaml
+# (see deploy/config.example.yaml); hosts cannot be set from env.
+{}
