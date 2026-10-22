@@ -107,6 +107,11 @@ func rewrite(pr *httputil.ProxyRequest) {
 	pr.SetURL(t.Upstream)
 	// Keep the client's Host so nginx/Apache virtual hosts still match.
 	pr.Out.Host = pr.In.Host
+	// ReverseProxy re-encodes queries that net/url cannot parse (for example
+	// ones containing ';'), which changes what PHP sees. Forward the
+	// original bytes; query validation is PA-QUERY's job (SPEC 5.3).
+	pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+	pr.Out.URL.ForceQuery = pr.In.URL.ForceQuery
 
 	// Never send Transfer-Encoding upstream; the server has already
 	// buffered the body and set ContentLength.

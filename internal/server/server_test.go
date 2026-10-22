@@ -139,6 +139,23 @@ func TestPassThrough(t *testing.T) {
 	}
 }
 
+func TestQueryForwardedUnchanged(t *testing.T) {
+	h := newHarness(t, echoUpstream(t).URL, nil)
+	for _, q := range []string{
+		"a[]=1&a[b][c]=2",
+		"a=1;b=2",
+		"a=%zz",
+		"a=1&&b=",
+		"%5B%5D=x&a+b=c%20d",
+	} {
+		req, _ := http.NewRequest("GET", h.front.URL+"/q.php?"+q, nil)
+		_, body := h.do(t, req)
+		if got := decode(t, body).RawQuery; got != q {
+			t.Errorf("query %q arrived upstream as %q", q, got)
+		}
+	}
+}
+
 func TestTrustedPeerForwardingHeaders(t *testing.T) {
 	h := newHarness(t, echoUpstream(t).URL, func(c *config.Config) {
 		c.TrustedProxies = []string{"127.0.0.0/8", "::1/128"}
