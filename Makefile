@@ -22,8 +22,12 @@ lint:
 	$(GO) run github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) -quiet ./...
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+FUZZTIME ?= 60s
+
+# Each target runs on its own: go test allows one -fuzz target per package run.
 fuzz:
-	@echo "fuzz: no fuzz targets yet; the multipart and urlencoded parsers land in M3/M4"
+	$(GO) test ./internal/inspect/query -run '^$$' -fuzz '^FuzzParse$$' -fuzztime $(FUZZTIME)
+	$(GO) test ./internal/inspect/headers -run '^$$' -fuzz '^FuzzStripCookies$$' -fuzztime $(FUZZTIME)
 
 harness:
 	@echo "harness: PHP equivalence harness lands in M6"

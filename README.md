@@ -16,12 +16,13 @@ Client -> ALB (TLS, WAF) -> phparmor (N replicas) -> nginx/Apache -> PHP-FPM / m
 
 ## Status
 
-Milestone **M1 (skeleton)**: config with env overrides and SIGHUP reload, data
-and admin listeners, pass-through proxy, JSON access logs, Prometheus metrics,
-and health endpoints. **No PHP2Shell controls are active yet**: they land in
-M2 to M5 (SPEC section 15).
+Milestone **M2**: the framing, header, cookie and query controls below are
+active. **The core PHP2Shell controls are not yet**: multipart
+canonicalisation and the upload-progress block (PA-MPART, PA-UPROG) arrive in
+M3, urlencoded bodies (PA-URLENC) in M4, and session-cookie validation and
+strikes (PA-SESSCOOKIE, PA-STRIKE) in M5 (SPEC section 15).
 
-What M1 already does on every request:
+On every request PHParmor also:
 
 - Caps concurrent requests (503 with `Retry-After` when full).
 - Rejects unknown `Host` values with 421 when `hosts` is configured.
@@ -34,6 +35,114 @@ What M1 already does on every request:
 - Preserves the client `Host`, sets `X-Forwarded-For` (trusted chain plus
   peer), `X-Forwarded-Proto` (trusted value or `http`) and `X-Request-ID`. It
   strips `Forwarded` and `X-Real-IP` from untrusted peers.
+
+## Controls
+
+Every control has a stable ID and a mode:
+
+- `enforce` blocks the request (or modifies it).
+- `monitor` forwards the request and records `would_block`.
+- `off` skips the check.
+
+Set modes globally under `controls`, per host, or per route. Each control
+that runs adds a decision to the access log line and increments
+`phparmor_decisions_total{control,outcome}`. Clients only ever see a short
+status text and the request ID; the control and reason go to the log.
+
+PHP parses query strings and cookies with its own rules, and PHParmor counts
+the way PHP will:
+
+- `+` and `%XX` are decoded.
+- A name is truncated at a NUL byte.
+- `.` and spaces in the base name become `_`.
+- An unmatched `[` becomes `_`.
+- Only consecutive `[...]` groups count as nesting.
+
+### PA-FRAME: request framing (default: enforce)
+
+Rejects with 400:
+- A body on a method in `limits.no_body_methods` (default GET, HEAD,
+  OPTIONS, DELETE).
+- Any `Transfer-Encoding` other than a single `chunked`.
+- Repeated or non-numeric `Content-Length`.
+- NUL, CR or LF in a header value.
+
+Rejects with 415: a request body with a `Content-Encoding` other than
+`identity`. PHParmor cannot inspect a compressed body, and Apache's DEFLATE
+input filter can inflate it before PHP parses it.
+
+Go's HTTP server parses the request head first:
+- **Always rejected, even in monitor mode:** differing or malformed
+  `Content-Length` values, non-chunked `Transfer-Encoding`, invalid header
+  names, and NUL or CR in header values.
+- **Normalised before PHParmor sees them:**
+  - `Content-Length` together with `Transfer-Encoding` (treated as chunked).
+  - Repeated identical `Content-Length` values.
+  - Obsolete line folding.
+  - Bare-LF line endings.
+
+  This departs from SPEC 5.1, which says to reject them. It is safe because
+  PHParmor always re-frames the body with an exact `Content-Length`, so the
+  upstream never sees ambiguous framing. Tests pin this behaviour.
+
+If you run behind an AWS ALB, also set its desync mitigation mode to
+`strictest`.
+
+*Expected breakage:* clients that send bodies on DELETE (override
+`no_body_methods` per route), and clients that compress request bodies.
+
+### PA-HDR: headers and cookies (default: enforce)
+
+| Limit | Default | Over the limit |
+|---|---|---|
+| `max_headers` (header lines, including Host) | 100 | 431 |
+| `max_header_value` | 8 KiB | 431 |
+| `max_cookies` | 50 | 431 |
+| `max_cookie_bytes` (whole Cookie header) | 8 KiB | 431 |
+| `max_cookie_size` (one pair) | 4 KiB | 431 |
+| Cookie-name nesting (`max_nesting`) | 8 | 400 |
+| Cookie-name length (`max_key_length`) | 256 | 400 |
+| More than one `Cookie` header | rejected | 400 |
+
+PHP parses cookies into `$_COOKIE` with the same bracket-nesting rules as the
+query string, so cookie names get the same nesting and key-length limits.
+Requests with several `Cookie` headers are rejected because servers disagree
+on how to join them.
+
+*Expected breakage:* sites with very many or very large cookies (raise the
+limits per route).
+
+### PA-COOKIE-STRIP: strip named cookies (default: off)
+
+Removes the cookies listed in a host's `cookie_strip` before forwarding, and
+leaves every other byte of the `Cookie` header as sent. Matching uses the
+name PHP would register, so `PHP%53ESSID`, `PHPSESSID%00x` and
+`PHPSESSID[x]` all match `PHPSESSID`. In monitor mode it only records
+`would_block`.
+
+**For apps that do not use native PHP sessions, stripping `PHPSESSID`
+removes the session upload-progress path entirely.** It is off by default
+because many legacy apps do use native sessions. Enable it per host only
+after confirming the app does not.
+
+*Expected breakage:* logins and carts in apps that use native PHP sessions,
+if enabled for them.
+
+### PA-QUERY: query string (default: enforce)
+
+| Limit | Default | Over the limit |
+|---|---|---|
+| `max_vars` (PHP's `max_input_vars` default) | 1000 | 400 |
+| `max_nesting` (PHP allows 64) | 8 | 400 |
+| `max_key_length` | 256 | 400 |
+| `max_query_length` | 8 KiB | 414 |
+
+These limit what PHP allocates when it builds `$_GET` at start-up. The query
+is validated only and is forwarded byte for byte. In M4 the variable count
+will be shared with urlencoded bodies.
+
+*Expected breakage:* forms submitted by GET with more than 1000 fields or
+very deep array names.
 
 ## Running
 
@@ -126,7 +235,7 @@ The proxy cannot reach PHP worker state. Alongside PHParmor:
 |---|---|
 | `make test` | Unit tests (with `-race`) |
 | `make lint` | `go vet`, staticcheck, gosec, govulncheck |
-| `make fuzz` | Fuzz smoke per target (from M3) |
+| `make fuzz` | 60 s fuzz smoke per target (`FUZZTIME=` to change) |
 | `make harness` | PHP equivalence harness (from M6) |
 | `make bench` | Benchmarks (from M6) |
 | `make image` | Local distroless container image |

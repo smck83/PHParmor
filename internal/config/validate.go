@@ -121,6 +121,16 @@ func (v *validator) route(p string, r Route) {
 	v.check(l.MaxVars == nil || *l.MaxVars > 0, p+".limits.max_vars: must be > 0")
 	v.check(l.MaxNesting == nil || *l.MaxNesting > 0, p+".limits.max_nesting: must be > 0")
 	v.check(l.MaxFieldValue == nil || *l.MaxFieldValue > 0, p+".limits.max_field_value: must be > 0")
+	v.check(l.MaxKeyLength == nil || *l.MaxKeyLength > 0, p+".limits.max_key_length: must be > 0")
+	v.check(l.MaxQueryLength == nil || *l.MaxQueryLength > 0, p+".limits.max_query_length: must be > 0")
+	v.check(l.MaxHeaders == nil || *l.MaxHeaders > 0, p+".limits.max_headers: must be > 0")
+	v.check(l.MaxHeaderValue == nil || *l.MaxHeaderValue > 0, p+".limits.max_header_value: must be > 0")
+	v.check(l.MaxCookies == nil || *l.MaxCookies > 0, p+".limits.max_cookies: must be > 0")
+	v.check(l.MaxCookieBytes == nil || *l.MaxCookieBytes > 0, p+".limits.max_cookie_bytes: must be > 0")
+	v.check(l.MaxCookieSize == nil || *l.MaxCookieSize > 0, p+".limits.max_cookie_size: must be > 0")
+	if l.NoBodyMethods != nil {
+		v.methods(p+".limits.no_body_methods", *l.NoBodyMethods)
+	}
 	v.controls(p+".controls", r.Controls)
 }
 
@@ -131,6 +141,20 @@ func (v *validator) limits(p string, l Limits) {
 	v.check(l.MaxVars > 0, p+".max_vars: must be > 0")
 	v.check(l.MaxNesting > 0, p+".max_nesting: must be > 0")
 	v.check(l.MaxFieldValue > 0, p+".max_field_value: must be > 0")
+	v.check(l.MaxKeyLength > 0, p+".max_key_length: must be > 0")
+	v.check(l.MaxQueryLength > 0, p+".max_query_length: must be > 0")
+	v.check(l.MaxHeaders > 0, p+".max_headers: must be > 0")
+	v.check(l.MaxHeaderValue > 0, p+".max_header_value: must be > 0")
+	v.check(l.MaxCookies > 0, p+".max_cookies: must be > 0")
+	v.check(l.MaxCookieBytes > 0, p+".max_cookie_bytes: must be > 0")
+	v.check(l.MaxCookieSize > 0, p+".max_cookie_size: must be > 0")
+	v.methods(p+".no_body_methods", l.NoBodyMethods)
+}
+
+func (v *validator) methods(p string, ms []string) {
+	for _, m := range ms {
+		v.check(isToken(m) && m == strings.ToUpper(m), fmt.Sprintf("%s: invalid method %q", p, m))
+	}
 }
 
 func (v *validator) controls(p string, m map[string]Mode) {
