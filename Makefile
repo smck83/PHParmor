@@ -31,5 +31,7 @@ harness:
 bench:
 	@echo "bench: k6/vegeta benchmarks land in M6"
 
+IMAGE ?= phparmor:dev
+
 image:
-	@echo "image: distroless container build lands in M7"
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t $(IMAGE) .

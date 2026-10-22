@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +32,23 @@ func TestExampleConfigParses(t *testing.T) {
 	}
 	if cfg.Controls[CtlCookieStrip] != ModeOff {
 		t.Errorf("PA-COOKIE-STRIP = %q, want off (YAML 'off' must stay a string)", cfg.Controls[CtlCookieStrip])
+	}
+}
+
+func TestContainerConfigNeedsOnlyUpstreamEnv(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "deploy", "config.container.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(bytes.NewReader(data), nil); err == nil || !strings.Contains(err.Error(), "upstreams") {
+		t.Fatalf("without env: err = %v, want missing upstreams", err)
+	}
+	cfg, err := Parse(bytes.NewReader(data), []string{"PHPARMOR_UPSTREAMS=http://nginx:80"})
+	if err != nil {
+		t.Fatalf("with env: %v", err)
+	}
+	if cfg.Upstreams[0] != "http://nginx:80" {
+		t.Errorf("upstreams = %v", cfg.Upstreams)
 	}
 }
 

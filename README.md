@@ -42,6 +42,36 @@ make build
 ./bin/phparmor -config deploy/config.example.yaml
 ```
 
+### Container
+
+Images for linux/amd64 and linux/arm64 are published to GitHub Packages by
+the [build workflow](.github/workflows/build.yml):
+
+- Pushes to `main` produce the `main` tag.
+- `v*` git tags produce semver tags.
+- Every build produces a `sha-<commit>` tag.
+
+Images are distroless, run as non-root (UID 65532), and ship with an SBOM and
+provenance attestation. They are signed with cosign (keyless).
+
+```bash
+docker run --rm -p 8080:8080 -p 127.0.0.1:9090:9090 -e PHPARMOR_UPSTREAMS=http://nginx:80 -e PHPARMOR_TRUSTED_PROXIES=10.0.0.0/16 ghcr.io/smck83/phparmor:main
+```
+
+The image's built-in `/etc/phparmor/config.yaml` uses the defaults only. Set
+`PHPARMOR_UPSTREAMS` (required) and any other overrides with env vars, or
+mount your own config over that path for per-host routes. The spool directory
+is `/var/lib/phparmor/spool`. Give it a volume if you want spooled bodies off
+the container's writable layer (spooling to disk arrives in M3). Port 9090 is
+the admin port: keep it off public networks. `make image` builds a local
+image.
+
+Verify a published image's signature:
+
+```bash
+cosign verify ghcr.io/smck83/phparmor:main --certificate-identity-regexp '^https://github.com/smck83/PHParmor/' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 Flags: `-config` (or `PHPARMOR_CONFIG`; default `/etc/phparmor/config.yaml`),
 `-check` (validate the config and exit), `-version`.
 
@@ -99,7 +129,7 @@ The proxy cannot reach PHP worker state. Alongside PHParmor:
 | `make fuzz` | Fuzz smoke per target (from M3) |
 | `make harness` | PHP equivalence harness (from M6) |
 | `make bench` | Benchmarks (from M6) |
-| `make image` | Distroless container image (from M7) |
+| `make image` | Local distroless container image |
 
 ## Licence
 
