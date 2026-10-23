@@ -131,6 +131,9 @@ func (v *validator) route(p string, r Route) {
 	if l.NoBodyMethods != nil {
 		v.methods(p+".limits.no_body_methods", *l.NoBodyMethods)
 	}
+	if l.AllowedPartHeaders != nil {
+		v.partHeaders(p+".limits.allowed_part_headers", *l.AllowedPartHeaders)
+	}
 	v.controls(p+".controls", r.Controls)
 }
 
@@ -149,6 +152,13 @@ func (v *validator) limits(p string, l Limits) {
 	v.check(l.MaxCookieBytes > 0, p+".max_cookie_bytes: must be > 0")
 	v.check(l.MaxCookieSize > 0, p+".max_cookie_size: must be > 0")
 	v.methods(p+".no_body_methods", l.NoBodyMethods)
+	v.partHeaders(p+".allowed_part_headers", l.AllowedPartHeaders)
+}
+
+func (v *validator) partHeaders(p string, hs []string) {
+	for _, h := range hs {
+		v.check(isToken(h), fmt.Sprintf("%s: invalid header name %q", p, h))
+	}
 }
 
 func (v *validator) methods(p string, ms []string) {

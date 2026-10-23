@@ -225,8 +225,8 @@ func TestBodyTooLarge(t *testing.T) {
 			t.Errorf("block body must carry only the request ID: %q", body)
 		}
 	}
-	if h.srv.budget.InFlight() != 0 {
-		t.Errorf("budget leaked: %d", h.srv.budget.InFlight())
+	if h.srv.pool.MemoryInFlight() != 0 {
+		t.Errorf("budget leaked: %d", h.srv.pool.MemoryInFlight())
 	}
 }
 
@@ -313,6 +313,7 @@ func TestBufferBudgetOverload(t *testing.T) {
 	h := newHarness(t, up.URL, func(c *config.Config) {
 		c.Buffers.MemoryPerRequest = 1024
 		c.Buffers.MemoryGlobal = 1024
+		c.Buffers.SpoolQuota = 1024
 	})
 	req, _ := http.NewRequest("POST", h.front.URL+"/", strings.NewReader(strings.Repeat("a", 4096)))
 	resp, _ := h.do(t, req)
@@ -323,6 +324,7 @@ func TestBufferBudgetOverload(t *testing.T) {
 	h = newHarness(t, up.URL, func(c *config.Config) {
 		c.Buffers.MemoryPerRequest = 1024
 		c.Buffers.MemoryGlobal = 1024
+		c.Buffers.SpoolQuota = 1024
 		c.Buffers.OnOverload = "bypass"
 	})
 	req, _ = http.NewRequest("POST", h.front.URL+"/", strings.NewReader(strings.Repeat("a", 4096)))

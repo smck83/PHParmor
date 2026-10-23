@@ -28,6 +28,9 @@ FUZZTIME ?= 60s
 fuzz:
 	$(GO) test ./internal/inspect/query -run '^$$' -fuzz '^FuzzParse$$' -fuzztime $(FUZZTIME)
 	$(GO) test ./internal/inspect/headers -run '^$$' -fuzz '^FuzzStripCookies$$' -fuzztime $(FUZZTIME)
+	$(GO) test ./internal/inspect/multipart -run '^$$' -fuzz '^FuzzCanonicalize$$' -fuzztime $(FUZZTIME)
+	$(GO) test ./internal/inspect/multipart -run '^$$' -fuzz '^FuzzBoundary$$' -fuzztime $(FUZZTIME)
+	$(GO) test ./internal/inspect/multipart -run '^$$' -fuzz '^FuzzParseDisposition$$' -fuzztime $(FUZZTIME)
 
 harness:
 	@echo "harness: PHP equivalence harness lands in M6"

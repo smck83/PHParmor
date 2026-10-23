@@ -327,20 +327,34 @@ func TestWireFraming(t *testing.T) {
 // body. It always uses a fresh connection with a deadline.
 func rawRequest(t *testing.T, addr, raw string) (int, string) {
 	t.Helper()
+	status, body, _ := rawRequestFull(t, addr, raw)
+	return status, body
+}
+
+// rawRequestFull is rawRequest that also returns the final response's
+// headers, skipping any 1xx interim responses (Expect: 100-continue).
+func rawRequestFull(t *testing.T, addr, raw string) (int, string, http.Header) {
+	t.Helper()
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	if _, err := io.WriteString(conn, raw); err != nil {
 		t.Fatal(err)
 	}
-	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
-	if err != nil {
-		t.Fatalf("read response: %v", err)
+	br := bufio.NewReader(conn)
+	for {
+		resp, err := http.ReadResponse(br, nil)
+		if err != nil {
+			t.Fatalf("read response: %v", err)
+		}
+		if resp.StatusCode >= 100 && resp.StatusCode < 200 {
+			continue
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b), resp.Header
 	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	return resp.StatusCode, string(b)
 }

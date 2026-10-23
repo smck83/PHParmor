@@ -1,6 +1,6 @@
 # PHParmor: design specification
 
-Status: draft v0.1 (2026-10-22)
+Status: draft v0.2 (2026-10-23; v0.2 relaxes the 6.2 part rules after the benign corpus)
 Licence: Apache-2.0
 Language: Go (current stable release; minimum 1.22)
 
@@ -183,11 +183,15 @@ The core control. Goal: PHP receives a multipart body that is structurally simpl
 
 | Rule | Default |
 |---|---|
-| Allowed part headers | `Content-Disposition`, `Content-Type` only; any other header -> reject (configurable allowlist) |
-| `Content-Transfer-Encoding` present | reject |
+| Allowed part headers | `Content-Disposition`, `Content-Type`, `Content-Length`, `Content-Transfer-Encoding`; any other header -> reject (configurable allowlist `limits.allowed_part_headers`) |
+| Repeated part header | reject |
+| Part `Content-Length` | digits only and must equal the part's data length, else reject; not forwarded |
+| `Content-Transfer-Encoding` | `7bit`, `8bit` or `binary` (case-insensitive) accepted and not forwarded; any other value -> reject |
 | Disposition type | must be `form-data` |
-| `name` parameter | required, non-empty, max 256 bytes |
-| `filename` parameter | optional, max 255 bytes; `filename*` (RFC 5987) -> reject |
+| `name` parameter | required, non-empty, max 256 bytes; `name*` -> reject |
+| `filename` parameter | optional, max 255 bytes |
+| `filename*` (RFC 5987) | accepted only alongside a plain `filename`, and not forwarded (the canonical part keeps `filename`); `filename*` without `filename` -> reject |
+| Other `Content-Disposition` parameters | reject |
 | Characters in `name`/`filename` | printable; reject `"`, `\`, CR, LF, NUL, and other C0 controls |
 | Duplicate parameters in one header | reject |
 | Bracket nesting depth in `name` | max 8 |
@@ -195,6 +199,8 @@ The core control. Goal: PHP receives a multipart body that is structurally simpl
 | Field (non-file) value size | max 1 MiB |
 | File size | route cap |
 | Field name equals upload-progress name | reject (PA-UPROG) |
+
+The part `Content-Length`, identity `Content-Transfer-Encoding` and `filename*` rules come from the benign corpus: Guzzle sends `Content-Length` on every part, Apache HttpClient 4 (default mode) sends `Content-Transfer-Encoding: 8bit`/`binary`, and .NET `HttpClient` always sends `filename*` next to `filename`. PHP ignores all three (it uses the plain `filename` and never decodes transfer encodings), and the canonical output (6.4) drops them, so PHP sees exactly what it would have used and no parser differential remains. Non-identity encodings (`base64`, `quoted-printable`) stay rejected because some parsers decode them and PHP does not, and `filename*` alone stays rejected because parsers disagree on whether the part is a file. Operators who want only `Content-Disposition` and `Content-Type` remove the other two from `allowed_part_headers`.
 
 ### 6.3 Per-request limits
 
@@ -310,6 +316,7 @@ limits:
   max_vars: 1000
   max_nesting: 8
   max_field_value: 1MiB
+  allowed_part_headers: [Content-Disposition, Content-Type, Content-Length, Content-Transfer-Encoding]
 
 hosts:
   - names: ["app.example.com"]
@@ -370,7 +377,7 @@ The README must list these alongside the proxy, because the proxy cannot reach w
 2. **Fuzzing** (`go test -fuzz`): `FuzzCanonicalize` with invariants: never panics; memory bounded; if accepted, the canonical output re-parses in Go to the same ordered list of (name, filename, content-type, sha256(data)).
 3. **PHP equivalence harness** (`test/php/`, docker compose): PHP 7.4, 8.1 and 8.4 containers behind nginx, each exposing `dump.php` that returns JSON of `$_GET`, `$_POST`, `$_COOKIE` and `$_FILES` (name, type, size, sha256, error). For every request in the benign corpus, the JSON via PHParmor must equal the JSON direct to PHP (ignoring `tmp_name`).
 4. **Benign corpus** (`test/corpus/benign`): real captures from Chrome, Firefox, Safari, curl, Python requests, Guzzle, axios `FormData`, Java `HttpClient`, .NET `HttpClient`, including array fields (`a[]`, `a[b][c]`), empty files, unicode filenames, large files.
-5. **Negative corpus** (`test/corpus/negative`): structural cases only: upload-progress field, 5000 parts, deep nesting, oversized part headers, `filename*`, `Content-Transfer-Encoding`, chunked multipart, CL+TE, missing final boundary, quotes and backslashes in names.
+5. **Negative corpus** (`test/corpus/negative`): structural cases only: upload-progress field, 5000 parts, deep nesting, oversized part headers, `filename*` without `filename`, non-identity `Content-Transfer-Encoding`, chunked multipart, CL+TE, missing final boundary, quotes and backslashes in names.
 6. **No exploit code** in the repo. Validation against real exploit tooling happens in a private lab and is not committed.
 7. **CI**: `go vet`, `staticcheck`, `govulncheck`, `gosec`, unit + fuzz smoke (60 s), equivalence harness, benchmarks on main.
 
@@ -386,7 +393,7 @@ The README must list these alongside the proxy, because the proxy cannot reach w
 
 Expected breakage with the default config, to document in the README:
 - Apps that use PHP's session upload-progress UI.
-- Clients that send extra per-part headers, `Content-Transfer-Encoding`, or RFC 5987 `filename*`.
+- Clients that send per-part headers other than `Content-Disposition`, `Content-Type`, `Content-Length` and `Content-Transfer-Encoding`; a part `Content-Length` that does not match the data; a `Content-Transfer-Encoding` other than `7bit`, `8bit` or `binary` (for example `base64`); or RFC 5987 `filename*` without a plain `filename`. Guzzle, Apache HttpClient 4 and .NET `HttpClient` work with the defaults; removing `Content-Length` or `Content-Transfer-Encoding` from `allowed_part_headers` breaks Guzzle or HttpClient 4 respectively.
 - Field names or filenames containing `"` or `\` (browsers percent-encode these, so rare).
 - Forms with more than 256 parts or deeper than 8 bracket levels (raise the limits per route).
 - Upload progress bars that rely on streaming to the backend: PHParmor buffers the full body first.

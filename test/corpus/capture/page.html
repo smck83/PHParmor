@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>PHParmor corpus capture</title>
+<p>Synthetic benign requests encoded by this browser's own FormData and
+URLSearchParams implementations. Run <code>captureAll()</code> or use the
+buttons; each request is saved as &lt;browser&gt;-&lt;case&gt;.http.</p>
+<label>Browser prefix <input id="prefix" value="chrome"></label>
+<div id="buttons"></div>
+<pre id="log"></pre>
+<script>
+function bytes(n) {
+  const b = new Uint8Array(n);
+  for (let i = 0; i < n; i++) b[i] = (i * 31 + 7) & 0xff;
+  return b;
+}
+
+const cases = {
+  fields() {
+    const fd = new FormData();
+    fd.append("name", "Alice Example");
+    fd.append("tags[]", "one");
+    fd.append("tags[]", "two");
+    fd.append("addr[home][city]", "Springfield");
+    fd.append("unicode", "héllo ✓ 日本");
+    fd.append("empty", "");
+    fd.append("multiline", "line1\r\nline2\nline3");
+    fd.append("we\"ird name", "quote in the field name is %22-encoded by the browser");
+    return fd;
+  },
+  files() {
+    const fd = new FormData();
+    fd.append("title", "report");
+    fd.append("doc", new File([bytes(4096)], "data.bin", { type: "application/octet-stream" }));
+    fd.append("empty", new File([], "empty.txt", { type: "text/plain" }));
+    fd.append("photos[]", new File(["fake png"], "résumé ✓.png", { type: "image/png" }));
+    fd.append("photos[]", new File(["second"], "quote\".txt"));
+    fd.append("notype", new File(["no explicit type"], "notes"));
+    return fd;
+  },
+  large() {
+    const fd = new FormData();
+    fd.append("upload", new File([bytes(128 * 1024)], "large.bin", { type: "application/octet-stream" }));
+    return fd;
+  },
+  urlencoded() {
+    const p = new URLSearchParams();
+    p.append("q", "search terms & more");
+    p.append("a[]", "1");
+    p.append("a[b]", "2");
+    p.append("unicode", "✓");
+    return p;
+  },
+};
+
+async function capture(name) {
+  const prefix = document.getElementById("prefix").value;
+  const res = await fetch("/?corpus=" + prefix + "-" + name, { method: "POST", body: cases[name]() });
+  const text = await res.text();
+  document.getElementById("log").textContent += res.status + " " + text;
+  return res.status;
+}
+
+async function captureAll() {
+  const out = {};
+  for (const name of Object.keys(cases)) out[name] = await capture(name);
+  return out;
+}
+
+for (const name of Object.keys(cases)) {
+  const b = document.createElement("button");
+  b.textContent = name;
+  b.onclick = () => capture(name);
+  document.getElementById("buttons").append(b);
+}
+</script>

@@ -1,0 +1,35 @@
+POST /?corpus=axios-fields HTTP/1.1
+Accept: application/json, text/plain, */*
+Content-Type: multipart/form-data; boundary=axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn
+User-Agent: axios/1.7.9
+Content-Length: 708
+Accept-Encoding: gzip, compress, deflate, br
+Host: phparmor-capture:8080
+Connection: keep-alive
+
+--axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn
+Content-Disposition: form-data; name="name"
+
+Alice Example
+--axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn
+Content-Disposition: form-data; name="tags[]"
+
+one
+--axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn
+Content-Disposition: form-data; name="tags[]"
+
+two
+--axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn
+Content-Disposition: form-data; name="addr[home][city]"
+
+Springfield
+--axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn
+Content-Disposition: form-data; name="unicode"
+
+héllo ✓
+--axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn
+Content-Disposition: form-data; name="empty"
+
+
+--axios-1.7.9-boundary-vJIrCoHv7dqKULJchjl5n4cwn--
+

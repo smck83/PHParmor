@@ -16,20 +16,25 @@ Client -> ALB (TLS, WAF) -> phparmor (N replicas) -> nginx/Apache -> PHP-FPM / m
 
 ## Status
 
-Milestone **M2**: the framing, header, cookie and query controls below are
-active. **The core PHP2Shell controls are not yet**: multipart
-canonicalisation and the upload-progress block (PA-MPART, PA-UPROG) arrive in
-M3, urlencoded bodies (PA-URLENC) in M4, and session-cookie validation and
-strikes (PA-SESSCOOKIE, PA-STRIKE) in M5 (SPEC section 15).
+Milestone **M3**: framing, header, cookie and query controls, multipart
+canonicalisation, the upload-progress block and per-route multipart policy
+are active. **Still to come**: urlencoded bodies (PA-URLENC) in M4, and
+session-cookie validation, strikes and rate limits (PA-SESSCOOKIE,
+PA-STRIKE, PA-RATE) in M5 (SPEC section 15).
 
 On every request PHParmor also:
 
 - Caps concurrent requests (503 with `Retry-After` when full).
 - Rejects unknown `Host` values with 421 when `hosts` is configured.
-- Buffers the request body in memory under the route's `max_body` (413 when
-  over) and a global budget (`buffers.memory_global`; 503 when exhausted,
-  unless `on_overload: bypass`). It enforces `body_min_rate_bytes_per_sec`
-  while reading.
+- Buffers the request body before forwarding: in memory up to
+  `buffers.memory_per_request`, then in an owner-only temp file in
+  `buffers.spool_dir`. Limits:
+  - The route's `max_body` (413 when over).
+  - The global `memory_global` budget and the `spool_quota` disk quota (503
+    when either is exhausted, unless `on_overload: bypass`).
+  - `body_min_rate_bytes_per_sec`, enforced while reading.
+
+  Temp files are removed when the response completes or on any error.
 - Forwards with an exact `Content-Length`. `Transfer-Encoding` is never sent
   upstream.
 - Preserves the client `Host`, sets `X-Forwarded-For` (trusted chain plus
@@ -144,6 +149,86 @@ will be shared with urlencoded bodies.
 *Expected breakage:* forms submitted by GET with more than 1000 fields or
 very deep array names.
 
+### PA-MPART: multipart canonicalisation (default: enforce)
+
+PHParmor detects multipart bodies the way PHP does. PHP lowercases the
+`Content-Type` and cuts it at the first `;`, `,` or space, so
+`multipart/form-data,x; boundary=...` is still multipart and is still
+inspected.
+
+In enforce mode the body is parsed as it streams in. It is then forwarded in a
+canonical form:
+- A fresh random `phparmor-…` boundary.
+- CRLF line endings only.
+- No preamble or epilogue.
+- Each part carries only `Content-Disposition: form-data; name="…"` (plus
+  `filename="…"` for files) and its `Content-Type`.
+- An exact `Content-Length`.
+
+PHP only ever sees the structure PHParmor parsed, so folded or bloated part
+headers and other parser-differential tricks never reach it.
+
+| Rule | Default | Status |
+|---|---|---|
+| `Content-Type`: exactly one `boundary`, 1–70 RFC 2046 characters, no duplicate or unknown parameters (`charset` allowed) | | 400 |
+| Part headers allowed (`limits.allowed_part_headers`) | `Content-Disposition`, `Content-Type`, `Content-Length`, `Content-Transfer-Encoding` | 400 |
+| Part `Content-Length` must match the data | | 400 |
+| Part `Content-Transfer-Encoding` must be `7bit`, `8bit` or `binary` | | 400 |
+| Disposition type `form-data`; `name` required, 1–256 bytes; `filename` up to 255 bytes; no `"`, `\`, control characters or DEL; no duplicate or unknown parameters | | 400 |
+| `filename*` without a plain `filename`; any `name*` | | 400 |
+| Nesting in field names (`max_nesting`) | 8 | 400 |
+| Part `Content-Type` up to 128 bytes, a valid media type | | 400 |
+| Missing final boundary, or anything the parser cannot read | | 400 |
+| Parts (`max_parts`) | 256 | 413 |
+| File parts (`max_files`) | 20 | 413 |
+| Fields plus query variables (`max_vars`) | 1000 | 413 |
+| One field value (`max_field_value`) | 1 MiB | 413 |
+
+**Differences from SPEC 6.2, all found through the benign corpus:**
+- **Part `Content-Length`:** Guzzle sends one on every part.
+- **Identity `Content-Transfer-Encoding`:** Apache HttpClient 4 sends one on
+  every part by default.
+- **`filename*` alongside `filename`:** .NET `HttpClient` always sends both.
+
+PHP ignores all three: it uses the plain `filename`, and an identity transfer
+encoding changes nothing. PHParmor checks them, then drops them from the
+canonical body. Remove `Content-Length` and `Content-Transfer-Encoding` from
+`allowed_part_headers` for the strict SPEC list.
+
+In monitor (or off) mode PHParmor spools the body, inspects it, and forwards
+the client's original bytes unchanged.
+
+*Expected breakage:*
+- Clients that send base64 or quoted-printable parts.
+- `filename*` without a plain `filename`.
+- Names or filenames containing `"` or `\`. Browsers percent-encode `"`. A
+  backslash in a filename is rare outside Windows paths.
+- Forms over the part or field limits (raise them per route).
+- Upload progress bars that rely on streaming to the backend, because
+  PHParmor buffers the whole body first.
+
+### PA-UPROG: session upload-progress field (default: enforce)
+
+Rejects (403) a multipart field named `php.upload_progress_field` (default
+`PHP_SESSION_UPLOAD_PROGRESS`). It matches the exact name, or the name PHP
+would register, such as `PHP.SESSION.UPLOAD.PROGRESS`. This field is an
+ingredient of the PHP2Shell upload-progress attack paths. PA-UPROG has its
+own mode, so it still applies when PA-MPART is in monitor or off.
+
+If a body that is not being canonicalised cannot be parsed, PHParmor fails
+closed: it rejects the request if the field name appears anywhere in the
+body. PA-URLENC adds the same check for urlencoded bodies in M4.
+
+*Expected breakage:* apps that use PHP's session upload-progress UI. Also
+set `session.upload_progress.enabled=0`.
+
+### PA-ROUTE-MPART: multipart per route (default: monitor)
+
+When enforced, a multipart request on a route marked `multipart: deny` gets
+403. Most routes never accept uploads, so allowlisting the few that do
+removes the multipart attack surface from everything else. Run it in monitor
+mode first to find the routes that legitimately receive multipart.
+
 ## Running
 
 ```bash
@@ -239,6 +324,29 @@ The proxy cannot reach PHP worker state. Alongside PHParmor:
 | `make harness` | PHP equivalence harness (from M6) |
 | `make bench` | Benchmarks (from M6) |
 | `make image` | Local distroless container image |
+
+### Test corpora
+
+`make test` replays both corpora through the proxy:
+
+- **`test/corpus/benign/`:** real requests captured byte for byte from these
+  clients, all with synthetic content:
+  - Chromium (fetch with `FormData`)
+  - curl
+  - Go `net/http`
+  - Python requests
+  - Node axios
+  - PHP Guzzle
+  - Java Apache HttpClient 4 and 5
+  - .NET `HttpClient`
+
+  Each request must be accepted, and the upstream must receive the same parts
+  as PHP would read from the original. Add clients with the capture tool in
+  `test/corpus/capture`, using the scripts in `test/corpus/clients`.
+  **Firefox and Safari captures are still wanted.**
+- **`test/corpus/negative/`:** structural cases only, with the expected
+  status in `manifest.json`. Regenerate with
+  `go test ./internal/server -run TestNegativeCorpus -update-corpus`.
 
 ## Licence
 

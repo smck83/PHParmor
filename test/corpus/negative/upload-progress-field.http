@@ -1,0 +1,15 @@
+POST /upload HTTP/1.1
+Host: corpus.test
+Connection: close
+Content-Type: multipart/form-data; boundary=NegBoundary
+Content-Length: 167
+
+--NegBoundary
+Content-Disposition: form-data; name="PHP_SESSION_UPLOAD_PROGRESS"
+
+x
+--NegBoundary
+Content-Disposition: form-data; name="a"
+
+1
+--NegBoundary--

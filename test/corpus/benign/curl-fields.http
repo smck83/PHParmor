@@ -1,0 +1,32 @@
+POST /?corpus=curl-fields HTTP/1.1
+Host: phparmor-capture:8080
+User-Agent: curl/8.11.1
+Accept: */*
+Content-Length: 706
+Content-Type: multipart/form-data; boundary=------------------------xvhPXsa4wb5fSc0T90rhiG
+
+--------------------------xvhPXsa4wb5fSc0T90rhiG
+Content-Disposition: form-data; name="name"
+
+Alice Example
+--------------------------xvhPXsa4wb5fSc0T90rhiG
+Content-Disposition: form-data; name="tags[]"
+
+one
+--------------------------xvhPXsa4wb5fSc0T90rhiG
+Content-Disposition: form-data; name="tags[]"
+
+two
+--------------------------xvhPXsa4wb5fSc0T90rhiG
+Content-Disposition: form-data; name="addr[home][city]"
+
+Springfield
+--------------------------xvhPXsa4wb5fSc0T90rhiG
+Content-Disposition: form-data; name="unicode"
+
+héllo ✓
+--------------------------xvhPXsa4wb5fSc0T90rhiG
+Content-Disposition: form-data; name="empty"
+
+
+--------------------------xvhPXsa4wb5fSc0T90rhiG--

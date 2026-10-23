@@ -1,0 +1,36 @@
+POST /?corpus=dotnet-fields HTTP/1.1
+Host: phparmor-capture:8080
+Content-Type: multipart/form-data; boundary="76f2287a-2069-4a9c-9fc7-d11dc63dedac"
+Content-Length: 876
+
+--76f2287a-2069-4a9c-9fc7-d11dc63dedac
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: form-data; name=name
+
+Alice Example
+--76f2287a-2069-4a9c-9fc7-d11dc63dedac
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: form-data; name="tags[]"
+
+one
+--76f2287a-2069-4a9c-9fc7-d11dc63dedac
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: form-data; name="tags[]"
+
+two
+--76f2287a-2069-4a9c-9fc7-d11dc63dedac
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: form-data; name="addr[home][city]"
+
+Springfield
+--76f2287a-2069-4a9c-9fc7-d11dc63dedac
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: form-data; name=unicode
+
+héllo ✓
+--76f2287a-2069-4a9c-9fc7-d11dc63dedac
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: form-data; name=empty
+
+
+--76f2287a-2069-4a9c-9fc7-d11dc63dedac--

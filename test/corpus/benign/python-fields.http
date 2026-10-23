@@ -1,0 +1,34 @@
+POST /?corpus=python-fields HTTP/1.1
+Host: phparmor-capture:8080
+User-Agent: python-requests/2.32.3
+Accept-Encoding: gzip, deflate
+Accept: */*
+Connection: keep-alive
+Content-Length: 608
+Content-Type: multipart/form-data; boundary=3136a92b2c1a3adb9aae395d30526ae5
+
+--3136a92b2c1a3adb9aae395d30526ae5
+Content-Disposition: form-data; name="name"
+
+Alice Example
+--3136a92b2c1a3adb9aae395d30526ae5
+Content-Disposition: form-data; name="tags[]"
+
+one
+--3136a92b2c1a3adb9aae395d30526ae5
+Content-Disposition: form-data; name="tags[]"
+
+two
+--3136a92b2c1a3adb9aae395d30526ae5
+Content-Disposition: form-data; name="addr[home][city]"
+
+Springfield
+--3136a92b2c1a3adb9aae395d30526ae5
+Content-Disposition: form-data; name="unicode"
+
+héllo ✓
+--3136a92b2c1a3adb9aae395d30526ae5
+Content-Disposition: form-data; name="empty"
+
+
+--3136a92b2c1a3adb9aae395d30526ae5--

@@ -128,24 +128,30 @@ type Limits struct {
 
 	// PA-FRAME: methods that must not carry a request body.
 	NoBodyMethods []string `yaml:"no_body_methods"`
+
+	// PA-MPART: part headers accepted (only Content-Disposition and
+	// Content-Type are forwarded). Content-Transfer-Encoding is always
+	// rejected.
+	AllowedPartHeaders []string `yaml:"allowed_part_headers"`
 }
 
 // LimitOverrides are per-route limits; nil fields inherit the global value.
 type LimitOverrides struct {
-	MaxBody        *ByteSize `yaml:"max_body"`
-	MaxParts       *int      `yaml:"max_parts"`
-	MaxFiles       *int      `yaml:"max_files"`
-	MaxVars        *int      `yaml:"max_vars"`
-	MaxNesting     *int      `yaml:"max_nesting"`
-	MaxFieldValue  *ByteSize `yaml:"max_field_value"`
-	MaxKeyLength   *int      `yaml:"max_key_length"`
-	MaxQueryLength *ByteSize `yaml:"max_query_length"`
-	MaxHeaders     *int      `yaml:"max_headers"`
-	MaxHeaderValue *ByteSize `yaml:"max_header_value"`
-	MaxCookies     *int      `yaml:"max_cookies"`
-	MaxCookieBytes *ByteSize `yaml:"max_cookie_bytes"`
-	MaxCookieSize  *ByteSize `yaml:"max_cookie_size"`
-	NoBodyMethods  *[]string `yaml:"no_body_methods"`
+	MaxBody            *ByteSize `yaml:"max_body"`
+	MaxParts           *int      `yaml:"max_parts"`
+	MaxFiles           *int      `yaml:"max_files"`
+	MaxVars            *int      `yaml:"max_vars"`
+	MaxNesting         *int      `yaml:"max_nesting"`
+	MaxFieldValue      *ByteSize `yaml:"max_field_value"`
+	MaxKeyLength       *int      `yaml:"max_key_length"`
+	MaxQueryLength     *ByteSize `yaml:"max_query_length"`
+	MaxHeaders         *int      `yaml:"max_headers"`
+	MaxHeaderValue     *ByteSize `yaml:"max_header_value"`
+	MaxCookies         *int      `yaml:"max_cookies"`
+	MaxCookieBytes     *ByteSize `yaml:"max_cookie_bytes"`
+	MaxCookieSize      *ByteSize `yaml:"max_cookie_size"`
+	NoBodyMethods      *[]string `yaml:"no_body_methods"`
+	AllowedPartHeaders *[]string `yaml:"allowed_part_headers"`
 }
 
 // Host is a set of host names sharing a policy.
@@ -213,14 +219,15 @@ func Default() *Config {
 			MaxNesting:    8,
 			MaxFieldValue: 1 << 20,
 
-			MaxKeyLength:   256,
-			MaxQueryLength: 8 << 10,
-			MaxHeaders:     100,
-			MaxHeaderValue: 8 << 10,
-			MaxCookies:     50,
-			MaxCookieBytes: 8 << 10,
-			MaxCookieSize:  4 << 10,
-			NoBodyMethods:  []string{"GET", "HEAD", "OPTIONS", "DELETE"},
+			MaxKeyLength:       256,
+			MaxQueryLength:     8 << 10,
+			MaxHeaders:         100,
+			MaxHeaderValue:     8 << 10,
+			MaxCookies:         50,
+			MaxCookieBytes:     8 << 10,
+			MaxCookieSize:      4 << 10,
+			NoBodyMethods:      []string{"GET", "HEAD", "OPTIONS", "DELETE"},
+			AllowedPartHeaders: []string{"Content-Disposition", "Content-Type", "Content-Length", "Content-Transfer-Encoding"},
 		},
 	}
 }

@@ -71,6 +71,10 @@ limits:
   max_cookie_bytes: 8KiB       # whole Cookie header
   max_cookie_size: 4KiB        # one name=value pair
   no_body_methods: [GET, HEAD, OPTIONS, DELETE]   # PA-FRAME; [] allows bodies on any method
+  # PA-MPART: part headers accepted. Only Content-Disposition and Content-Type
+  # are forwarded. Content-Length must match the data; Content-Transfer-Encoding
+  # may only be 7bit/8bit/binary. Drop those two for SPEC 6.2's strict list.
+  allowed_part_headers: [Content-Disposition, Content-Type, Content-Length, Content-Transfer-Encoding]
 
 # With no hosts listed, every Host is accepted and the global limits apply.
 hosts:

@@ -1,0 +1,19 @@
+POST /?corpus=chrome-urlencoded HTTP/1.1
+Host: 127.0.0.1:18090
+Connection: keep-alive
+Content-Length: 62
+sec-ch-ua-platform: "Windows"
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Claude/3.1623.0 Chrome/152.0.7977.167 Safari/537.36 MSIX
+sec-ch-ua: "Not?A_Brand";v="24", "Chromium";v="152"
+Content-Type: application/x-www-form-urlencoded;charset=UTF-8
+sec-ch-ua-mobile: ?0
+Accept: */*
+Origin: http://127.0.0.1:18090
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: cors
+Sec-Fetch-Dest: empty
+Referer: http://127.0.0.1:18090/
+Accept-Encoding: gzip, deflate, br, zstd
+Accept-Language: en-US
+
+q=search+terms+%26+more&a%5B%5D=1&a%5Bb%5D=2&unicode=%E2%9C%93
