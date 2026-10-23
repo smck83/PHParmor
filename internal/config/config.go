@@ -114,16 +114,38 @@ type Limits struct {
 	MaxVars       int      `yaml:"max_vars"`
 	MaxNesting    int      `yaml:"max_nesting"`
 	MaxFieldValue ByteSize `yaml:"max_field_value"`
+
+	// PA-QUERY (and cookie names under PA-HDR).
+	MaxKeyLength   int      `yaml:"max_key_length"`
+	MaxQueryLength ByteSize `yaml:"max_query_length"`
+
+	// PA-HDR.
+	MaxHeaders     int      `yaml:"max_headers"`
+	MaxHeaderValue ByteSize `yaml:"max_header_value"`
+	MaxCookies     int      `yaml:"max_cookies"`
+	MaxCookieBytes ByteSize `yaml:"max_cookie_bytes"`
+	MaxCookieSize  ByteSize `yaml:"max_cookie_size"`
+
+	// PA-FRAME: methods that must not carry a request body.
+	NoBodyMethods []string `yaml:"no_body_methods"`
 }
 
 // LimitOverrides are per-route limits; nil fields inherit the global value.
 type LimitOverrides struct {
-	MaxBody       *ByteSize `yaml:"max_body"`
-	MaxParts      *int      `yaml:"max_parts"`
-	MaxFiles      *int      `yaml:"max_files"`
-	MaxVars       *int      `yaml:"max_vars"`
-	MaxNesting    *int      `yaml:"max_nesting"`
-	MaxFieldValue *ByteSize `yaml:"max_field_value"`
+	MaxBody        *ByteSize `yaml:"max_body"`
+	MaxParts       *int      `yaml:"max_parts"`
+	MaxFiles       *int      `yaml:"max_files"`
+	MaxVars        *int      `yaml:"max_vars"`
+	MaxNesting     *int      `yaml:"max_nesting"`
+	MaxFieldValue  *ByteSize `yaml:"max_field_value"`
+	MaxKeyLength   *int      `yaml:"max_key_length"`
+	MaxQueryLength *ByteSize `yaml:"max_query_length"`
+	MaxHeaders     *int      `yaml:"max_headers"`
+	MaxHeaderValue *ByteSize `yaml:"max_header_value"`
+	MaxCookies     *int      `yaml:"max_cookies"`
+	MaxCookieBytes *ByteSize `yaml:"max_cookie_bytes"`
+	MaxCookieSize  *ByteSize `yaml:"max_cookie_size"`
+	NoBodyMethods  *[]string `yaml:"no_body_methods"`
 }
 
 // Host is a set of host names sharing a policy.
@@ -190,6 +212,15 @@ func Default() *Config {
 			MaxVars:       1000,
 			MaxNesting:    8,
 			MaxFieldValue: 1 << 20,
+
+			MaxKeyLength:   256,
+			MaxQueryLength: 8 << 10,
+			MaxHeaders:     100,
+			MaxHeaderValue: 8 << 10,
+			MaxCookies:     50,
+			MaxCookieBytes: 8 << 10,
+			MaxCookieSize:  4 << 10,
+			NoBodyMethods:  []string{"GET", "HEAD", "OPTIONS", "DELETE"},
 		},
 	}
 }

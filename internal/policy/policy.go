@@ -173,6 +173,30 @@ func mergeLimits(base config.Limits, o config.LimitOverrides) config.Limits {
 	if o.MaxFieldValue != nil {
 		base.MaxFieldValue = *o.MaxFieldValue
 	}
+	if o.MaxKeyLength != nil {
+		base.MaxKeyLength = *o.MaxKeyLength
+	}
+	if o.MaxQueryLength != nil {
+		base.MaxQueryLength = *o.MaxQueryLength
+	}
+	if o.MaxHeaders != nil {
+		base.MaxHeaders = *o.MaxHeaders
+	}
+	if o.MaxHeaderValue != nil {
+		base.MaxHeaderValue = *o.MaxHeaderValue
+	}
+	if o.MaxCookies != nil {
+		base.MaxCookies = *o.MaxCookies
+	}
+	if o.MaxCookieBytes != nil {
+		base.MaxCookieBytes = *o.MaxCookieBytes
+	}
+	if o.MaxCookieSize != nil {
+		base.MaxCookieSize = *o.MaxCookieSize
+	}
+	if o.NoBodyMethods != nil {
+		base.NoBodyMethods = *o.NoBodyMethods
+	}
 	return base
 }
 

@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/smck83/phparmor/internal/config"
+	"github.com/smck83/phparmor/internal/inspect/framing"
+	"github.com/smck83/phparmor/internal/inspect/headers"
+	"github.com/smck83/phparmor/internal/inspect/query"
 	"github.com/smck83/phparmor/internal/policy"
 	"github.com/smck83/phparmor/internal/proxy"
 	"github.com/smck83/phparmor/internal/spool"
@@ -18,9 +21,10 @@ import (
 
 const maxLoggedPath = 2048
 
-// ServeHTTP runs the request pipeline (SPEC section 4). M1 implements the
-// connection limits, host and route policy, body buffering with an exact
-// Content-Length, and forwarding. Controls arrive in later milestones.
+// ServeHTTP runs the request pipeline (SPEC section 4): connection limits,
+// host and route policy, PA-FRAME, PA-HDR, PA-COOKIE-STRIP, PA-QUERY, body
+// buffering with an exact Content-Length, and forwarding. Body controls
+// arrive in M3 and M4.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	snap := s.snap.Load()
 	cfg := snap.cfg
@@ -58,6 +62,44 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ri.HostLabel, ri.Route = m.Host.Label, m.Route.Label
+	route, lim := m.Route, m.Route.Limits
+
+	// 2. Framing. It runs after host and route resolution because hosts and
+	// routes can override its mode; resolution reads no body.
+	if s.control(rec, ri, route, config.CtlFrame, func() *policy.Violation {
+		return framing.Check(r, lim.NoBodyMethods)
+	}) {
+		return
+	}
+
+	// 5. Headers and cookies.
+	if s.control(rec, ri, route, config.CtlHdr, func() *policy.Violation {
+		return headers.Check(r.Header, headers.Limits{
+			MaxHeaders:     lim.MaxHeaders,
+			MaxHeaderValue: int64(lim.MaxHeaderValue),
+			MaxCookies:     lim.MaxCookies,
+			MaxCookieBytes: int64(lim.MaxCookieBytes),
+			MaxCookieSize:  int64(lim.MaxCookieSize),
+			MaxNesting:     lim.MaxNesting,
+			MaxKeyLength:   lim.MaxKeyLength,
+		})
+	}) {
+		return
+	}
+	s.stripCookies(r, ri, route, m.Host.CookieStrip)
+
+	// 6. Query string (validated, forwarded unchanged).
+	if s.control(rec, ri, route, config.CtlQuery, func() *policy.Violation {
+		_, v := query.Check(r.URL.RawQuery, query.Limits{
+			MaxVars:      lim.MaxVars,
+			MaxNesting:   lim.MaxNesting,
+			MaxKeyLength: lim.MaxKeyLength,
+			MaxLength:    int64(lim.MaxQueryLength),
+		})
+		return v
+	}) {
+		return
+	}
 
 	// 7. Buffer the body so it is forwarded with an exact Content-Length.
 	if r.ContentLength != 0 {
@@ -86,6 +128,48 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		RequestID:   id,
 	}
 	s.proxy.ServeHTTP(rec, r.WithContext(proxy.WithTarget(ctx, t)))
+}
+
+// control runs one check under the route's mode for that control and records
+// the decision. It returns true when the request was rejected. The check is
+// not run when the control is off.
+func (s *Server) control(w http.ResponseWriter, ri *telemetry.RequestInfo, route *policy.Route, id string, check func() *policy.Violation) bool {
+	mode := route.Mode(id)
+	if mode == config.ModeOff {
+		return false
+	}
+	v := check()
+	d, block, _ := policy.Evaluate(id, mode, v)
+	ri.AddDecision(d)
+	if block {
+		s.reject(w, ri, v.Status, v.Reason)
+	}
+	return block
+}
+
+// stripCookies applies PA-COOKIE-STRIP: in enforce mode the named cookies
+// are removed before forwarding; in monitor mode they are only reported.
+func (s *Server) stripCookies(r *http.Request, ri *telemetry.RequestInfo, route *policy.Route, names []string) {
+	mode := route.Mode(config.CtlCookieStrip)
+	if mode == config.ModeOff || len(names) == 0 {
+		return
+	}
+	cookie := r.Header.Get("Cookie")
+	out, n := headers.StripCookies(cookie, names)
+	d := policy.Decision{Control: config.CtlCookieStrip, Mode: mode, Outcome: policy.Pass}
+	switch {
+	case n == 0:
+	case mode == config.ModeMonitor:
+		d.Outcome, d.Reason = policy.WouldBlock, "would_strip_cookie"
+	default:
+		d.Outcome, d.Reason = policy.Modify, "cookie_stripped"
+		if out == "" {
+			r.Header.Del("Cookie")
+		} else {
+			r.Header.Set("Cookie", out)
+		}
+	}
+	ri.AddDecision(d)
 }
 
 // bufferBody reads the request body into memory under the route's maximum

@@ -63,6 +63,14 @@ limits:
   max_vars: 1000
   max_nesting: 8
   max_field_value: 1MiB
+  max_key_length: 256          # query keys and cookie names (decoded bytes)
+  max_query_length: 8KiB
+  max_headers: 100             # header lines, including Host
+  max_header_value: 8KiB
+  max_cookies: 50
+  max_cookie_bytes: 8KiB       # whole Cookie header
+  max_cookie_size: 4KiB        # one name=value pair
+  no_body_methods: [GET, HEAD, OPTIONS, DELETE]   # PA-FRAME; [] allows bodies on any method
 
 # With no hosts listed, every Host is accepted and the global limits apply.
 hosts:

@@ -60,6 +60,10 @@ func TestDefaults(t *testing.T) {
 	if cfg.Limits.MaxBody != 32<<20 || cfg.Buffers.MemoryGlobal != 256<<20 {
 		t.Errorf("limits not defaulted: %+v %+v", cfg.Limits, cfg.Buffers)
 	}
+	if cfg.Limits.MaxHeaders != 100 || cfg.Limits.MaxCookies != 50 || cfg.Limits.MaxQueryLength != 8<<10 ||
+		strings.Join(cfg.Limits.NoBodyMethods, ",") != "GET,HEAD,OPTIONS,DELETE" {
+		t.Errorf("M2 limits not defaulted: %+v", cfg.Limits)
+	}
 	if cfg.Server.ReadHeaderTimeout != 10*time.Second {
 		t.Errorf("read_header_timeout = %v", cfg.Server.ReadHeaderTimeout)
 	}
@@ -142,6 +146,22 @@ func TestValidateRejects(t *testing.T) {
 		{"zero max_vars", func(c *Config) { c.Limits.MaxVars = 0 }, "limits.max_vars"},
 		{"zero max_nesting", func(c *Config) { c.Limits.MaxNesting = 0 }, "limits.max_nesting"},
 		{"zero max_field_value", func(c *Config) { c.Limits.MaxFieldValue = 0 }, "limits.max_field_value"},
+		{"zero max_key_length", func(c *Config) { c.Limits.MaxKeyLength = 0 }, "limits.max_key_length"},
+		{"zero max_query_length", func(c *Config) { c.Limits.MaxQueryLength = 0 }, "limits.max_query_length"},
+		{"zero max_headers", func(c *Config) { c.Limits.MaxHeaders = 0 }, "limits.max_headers"},
+		{"zero max_header_value", func(c *Config) { c.Limits.MaxHeaderValue = 0 }, "limits.max_header_value"},
+		{"zero max_cookies", func(c *Config) { c.Limits.MaxCookies = 0 }, "limits.max_cookies"},
+		{"zero max_cookie_bytes", func(c *Config) { c.Limits.MaxCookieBytes = 0 }, "limits.max_cookie_bytes"},
+		{"zero max_cookie_size", func(c *Config) { c.Limits.MaxCookieSize = 0 }, "limits.max_cookie_size"},
+		{"bad no_body_methods", func(c *Config) { c.Limits.NoBodyMethods = []string{"get"} }, "no_body_methods"},
+		{"route bad no_body_methods", func(c *Config) {
+			ms := []string{"G T"}
+			c.Hosts = route(Route{Match: Match{PathPrefix: "/"}, Limits: LimitOverrides{NoBodyMethods: &ms}})
+		}, "no_body_methods"},
+		{"route zero max_cookies", func(c *Config) {
+			z := 0
+			c.Hosts = route(Route{Match: Match{PathPrefix: "/"}, Limits: LimitOverrides{MaxCookies: &z}})
+		}, "limits.max_cookies"},
 		{"host without names", func(c *Config) { c.Hosts = []Host{{}} }, "names: at least one"},
 		{"bad host name", func(c *Config) { c.Hosts = []Host{{Names: []string{"a b"}}} }, "invalid host name"},
 		{"duplicate host", func(c *Config) {
