@@ -86,7 +86,7 @@ func Check(h http.Header, l Limits) *policy.Violation {
 	if n > l.MaxCookies {
 		return tooLarge(ReasonTooManyCookies)
 	}
-	for _, v := range query.Parse(c, ';').Vars {
+	for _, v := range query.ParseCookies(c).Vars {
 		if v.Depth > l.MaxNesting {
 			return malformed(ReasonCookieTooDeep)
 		}

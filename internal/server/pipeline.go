@@ -87,6 +87,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 6. Query string (validated, forwarded unchanged).
 	if s.control(rec, ri, route, config.CtlQuery, func() *policy.Violation {
 		_, v := query.Check(r.URL.RawQuery, query.Limits{
+			Seps:         cfg.PHP.ArgSeparatorInput,
 			MaxVars:      lim.MaxVars,
 			MaxNesting:   lim.MaxNesting,
 			MaxKeyLength: lim.MaxKeyLength,

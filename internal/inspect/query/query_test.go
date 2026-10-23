@@ -61,7 +61,7 @@ func TestDecode(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	r := Parse("a=1&&b[]=2&=3&c&d.e=4", '&')
+	r := Parse("a=1&&b[]=2&=3&c&d.e=4", "&")
 	if r.Pairs != 5 {
 		t.Errorf("Pairs = %d, want 5 (empty segments skipped)", r.Pairs)
 	}
@@ -73,18 +73,18 @@ func TestParse(t *testing.T) {
 		t.Errorf("bases = %s", got)
 	}
 
-	c := Parse("PHPSESSID=x; \tother=y;;PHP%53ESSID=z", ';')
+	c := ParseCookies("PHPSESSID=x; \tother=y;;PHP%53ESSID=z")
 	if c.Pairs != 3 || len(c.Vars) != 3 || c.Vars[1].Base != "other" || c.Vars[2].Base != "PHPSESSID" {
 		t.Errorf("cookie parse = %+v", c)
 	}
 	// Leading whitespace is only stripped for cookies.
-	if q := Parse("+a=1", '&'); q.Vars[0].Base != "a" || q.Vars[0].Key != " a" {
+	if q := Parse("+a=1", "&"); q.Vars[0].Base != "a" || q.Vars[0].Key != " a" {
 		t.Errorf("query leading space = %+v", q.Vars)
 	}
 }
 
 func TestCheck(t *testing.T) {
-	l := Limits{MaxVars: 3, MaxNesting: 2, MaxKeyLength: 10, MaxLength: 64}
+	l := Limits{Seps: "&", MaxVars: 3, MaxNesting: 2, MaxKeyLength: 10, MaxLength: 64}
 	tests := []struct {
 		name, raw, reason string
 	}{
@@ -125,12 +125,12 @@ func FuzzParse(f *testing.F) {
 		f.Add(s, true)
 	}
 	f.Fuzz(func(t *testing.T, s string, amp bool) {
-		sep := byte('&')
-		if !amp {
-			sep = ';'
-		}
+		sep := "&"
 		r := Parse(s, sep)
-		if r.Pairs > strings.Count(s, string(sep))+1 {
+		if !amp {
+			sep, r = ";", ParseCookies(s)
+		}
+		if r.Pairs > strings.Count(s, sep)+1 {
 			t.Fatalf("Pairs %d exceeds segments", r.Pairs)
 		}
 		if len(r.Vars) > r.Pairs {

@@ -83,5 +83,40 @@
     "status": 403,
     "reaches_upstream": false,
     "note": "session upload-progress field in multipart (PA-UPROG)"
+  },
+  "urlenc-comma-media-type": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "PHP reads this as urlencoded; it must not bypass inspection"
+  },
+  "urlenc-deep-nesting": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "key nested 20 levels"
+  },
+  "urlenc-invalid-percent": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "invalid percent-encoding"
+  },
+  "urlenc-long-key": {
+    "status": 400,
+    "reaches_upstream": false,
+    "note": "key over max_key_length (256)"
+  },
+  "urlenc-query-plus-body": {
+    "status": 413,
+    "reaches_upstream": false,
+    "note": "600 query variables plus 401 body variables: one combined max_vars"
+  },
+  "urlenc-upload-progress": {
+    "status": 403,
+    "reaches_upstream": false,
+    "note": "percent-encoded upload-progress key in a urlencoded body (PA-UPROG)"
+  },
+  "urlenc-vars-1001": {
+    "status": 413,
+    "reaches_upstream": false,
+    "note": "1001 variables, over max_vars (1000)"
   }
 }

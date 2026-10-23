@@ -104,6 +104,9 @@ type State struct {
 type PHP struct {
 	UploadProgressField string   `yaml:"upload_progress_field"`
 	SessionCookieNames  []string `yaml:"session_cookie_names"`
+	// ArgSeparatorInput mirrors php.ini arg_separator.input: every byte
+	// in it separates query and urlencoded variables.
+	ArgSeparatorInput string `yaml:"arg_separator_input"`
 }
 
 // Limits are the global input limits. Routes may override any of them.
@@ -209,6 +212,7 @@ func Default() *Config {
 		PHP: PHP{
 			UploadProgressField: "PHP_SESSION_UPLOAD_PROGRESS",
 			SessionCookieNames:  []string{"PHPSESSID"},
+			ArgSeparatorInput:   "&",
 		},
 		Controls: DefaultControls(),
 		Limits: Limits{

@@ -42,6 +42,7 @@ state:
 php:
   upload_progress_field: PHP_SESSION_UPLOAD_PROGRESS   # session.upload_progress.name
   session_cookie_names: [PHPSESSID]                    # session.name
+  arg_separator_input: "&"                             # arg_separator.input
 
 controls:                        # global modes; hosts/routes may override
   PA-FRAME: enforce

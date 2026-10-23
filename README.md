@@ -16,11 +16,11 @@ Client -> ALB (TLS, WAF) -> phparmor (N replicas) -> nginx/Apache -> PHP-FPM / m
 
 ## Status
 
-Milestone **M3**: framing, header, cookie and query controls, multipart
-canonicalisation, the upload-progress block and per-route multipart policy
-are active. **Still to come**: urlencoded bodies (PA-URLENC) in M4, and
-session-cookie validation, strikes and rate limits (PA-SESSCOOKIE,
-PA-STRIKE, PA-RATE) in M5 (SPEC section 15).
+Milestone **M4**: framing, header, cookie and query controls, multipart
+canonicalisation, urlencoded body validation, the upload-progress block and
+per-route multipart policy are active. **Still to come**: session-cookie
+validation, strikes and rate limits (PA-SESSCOOKIE, PA-STRIKE, PA-RATE) in M5
+(SPEC section 15).
 
 On every request PHParmor also:
 
@@ -143,8 +143,11 @@ if enabled for them.
 | `max_query_length` | 8 KiB | 414 |
 
 These limit what PHP allocates when it builds `$_GET` at start-up. The query
-is validated only and is forwarded byte for byte. In M4 the variable count
-will be shared with urlencoded bodies.
+is validated only and is forwarded byte for byte. Its variables share
+`max_vars` with the request body. Variables are split on every byte of
+`php.arg_separator_input` (default `&`). Set it to match php.ini
+`arg_separator.input`, for example `&;`, or PHParmor will count differently
+from PHP.
 
 *Expected breakage:* forms submitted by GET with more than 1000 fields or
 very deep array names.
@@ -207,6 +210,33 @@ the client's original bytes unchanged.
 - Upload progress bars that rely on streaming to the backend, because
   PHParmor buffers the whole body first.
 
+### PA-URLENC: urlencoded bodies (default: enforce)
+
+Validates `application/x-www-form-urlencoded` bodies the way PHP will parse
+them into `$_POST`. Bodies are detected as PHP's SAPI detects them, so
+`application/x-www-form-urlencoded,x` is still checked. The body streams
+from the spool with bounded memory and is always forwarded byte for byte.
+
+| Limit | Default | Over the limit |
+|---|---|---|
+| Body variables plus query variables (`max_vars`) | 1000 | 413 |
+| One decoded value (`max_field_value`) | 1 MiB | 413 |
+| Nesting (`max_nesting`) | 8 | 400 |
+| Decoded key length (`max_key_length`) | 256 | 400 |
+| Invalid percent-encoding (`%zz`, `%4`, a trailing `%`) | rejected | 400 |
+| Body size | route `max_body` | 413 |
+
+Some details:
+- **Combined count:** the query and the body share one `max_vars`, a
+  simplification of PHP's per-superglobal count. The query is counted even
+  when PA-QUERY is off.
+- **Separators:** variables are split on `php.arg_separator_input`.
+- **Methods:** the check applies to every method, which is stricter than PHP
+  (PHP only fills `$_POST` for POST).
+
+*Expected breakage:* clients that send bare `%` signs without encoding them
+(`%25`), and forms with more than 1000 fields between the query and the body.
+
 ### PA-UPROG: session upload-progress field (default: enforce)
 
 Rejects (403) a multipart field named `php.upload_progress_field` (default
@@ -217,7 +247,9 @@ own mode, so it still applies when PA-MPART is in monitor or off.
 
 If a body that is not being canonicalised cannot be parsed, PHParmor fails
 closed: it rejects the request if the field name appears anywhere in the
-body. PA-URLENC adds the same check for urlencoded bodies in M4.
+body. Urlencoded bodies get the same check: a key that decodes to the field
+name (for example `PHP%5FSESSION%5FUPLOAD%5FPROGRESS`) is rejected. The field
+is harmless outside multipart, but sending it signals probing.
 
 *Expected breakage:* apps that use PHP's session upload-progress UI. Also
 set `session.upload_progress.enabled=0`.

@@ -31,13 +31,19 @@ type Result struct {
 	Vars []Var
 }
 
-// Parse splits s on sep and returns what PHP would register. For cookies
-// (sep ';') PHP also strips leading whitespace from each name.
-func Parse(s string, sep byte) Result {
+// Parse splits s on any byte in seps (PHP's arg_separator.input, "&" by
+// default) and returns what PHP would register.
+func Parse(s, seps string) Result { return parse(s, seps, false) }
+
+// ParseCookies parses a Cookie header as PHP builds $_COOKIE: ';'
+// separators, and leading whitespace stripped from each name.
+func ParseCookies(s string) Result { return parse(s, ";", true) }
+
+func parse(s, seps string, cookie bool) Result {
 	var r Result
 	for len(s) > 0 {
 		seg := s
-		if i := strings.IndexByte(s, sep); i >= 0 {
+		if i := strings.IndexAny(s, seps); i >= 0 {
 			seg, s = s[:i], s[i+1:]
 		} else {
 			s = ""
@@ -50,7 +56,7 @@ func Parse(s string, sep byte) Result {
 		if i := strings.IndexByte(seg, '='); i >= 0 {
 			name = seg[:i]
 		}
-		if sep == ';' {
+		if cookie {
 			name = strings.TrimLeft(name, " \t\n\v\f\r")
 		}
 		if v, ok := Register(Decode(name)); ok {
