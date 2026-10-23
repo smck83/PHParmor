@@ -415,6 +415,7 @@ Expected breakage with the default config, to document in the README:
 1. Should PA-ROUTE-MPART ship with a helper that imports routes from Laravel `route:list --json` or Symfony `debug:router --format=json`?
 2. Is a per-host `max_vars` split by superglobal (exactly mirroring PHP) worth the complexity over the combined cap?
 3. Do we publish a hosted test endpoint so operators can check their deployment, or only a CLI checker (`phparmor check https://host`) that sends the benign negative corpus?
+4. Post-v1 application behaviour layer: see [docs/ROADMAP-behaviour.md](docs/ROADMAP-behaviour.md). It proposes a passive learn mode that profiles request shape per host and route (methods, content kinds, sizes, variable and part counts, opt-in field names; never values) and emits a suggested `hosts`/`routes` config for operator review, which can only tighten limits and never enforces by itself. It also proposes divert (a quarantine upstream pool with `pm.max_requests=1`) and tarpit outcomes on top of M5 strikes, and recommends against interactive challenges. Not scheduled; milestones M8 to M13 there are provisional, and the aggregated field-name collection it proposes would need a carve-out in section 9.
 
 ## 17. References
 
