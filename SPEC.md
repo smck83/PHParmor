@@ -156,15 +156,20 @@ PHP parses the query string into `$_GET` at start-up.
 - Max variables (default 1000, PHP's `max_input_vars` default).
 - Max bracket nesting depth in keys (default 8; PHP allows 64).
 - Max key length (default 256 bytes), max total query length (default 8 KiB).
+- Variables are split on every byte of `php.arg_separator_input` (default `&`, mirroring php.ini `arg_separator.input`; some legacy sites use `&;`).
+- Percent-encoding is decoded leniently, as PHP does; invalid escapes are not rejected in the query string.
 - Validation only; original query forwarded unchanged.
 
 ### 5.4 PA-URLENC: urlencoded bodies (default: enforce)
 
-Order-preserving parse (do not use `url.ParseQuery`, which loses ordering and treats `;` differently from PHP). PHP's default `arg_separator.input` is `&`.
-- Same var, nesting and key limits as PA-QUERY, counted together with the query string (PHP's `max_input_vars` applies to each superglobal separately; we use a combined cap for simplicity and document it).
+Order-preserving, streaming parse (do not use `url.ParseQuery`, which loses ordering and treats `;` differently from PHP), split on `php.arg_separator_input` like the query string. Bodies are classified as urlencoded the way PHP's SAPI does (lowercase, cut at the first `;`, `,` or space). Memory is bounded: values are never held, and a raw key longer than three times `max_key_length` is rejected without being kept.
+- Same var, nesting and key limits as PA-QUERY, counted together with the query string (PHP's `max_input_vars` applies to each superglobal separately; we use a combined cap for simplicity and document it). The query is counted even when PA-QUERY is off.
+- Max value size: `max_field_value` (default 1 MiB, as for multipart fields), measured after decoding.
 - Max body (route cap).
-- Reject invalid percent-encoding.
-- Reject if any key equals the configured upload-progress field name (it is harmless outside multipart, but its presence signals probing; mode follows PA-UPROG).
+- Reject invalid percent-encoding in keys and values.
+- Reject if any key (decoded, or as PHP would register it) equals the configured upload-progress field name (it is harmless outside multipart, but its presence signals probing; mode follows PA-UPROG). If a non-enforced PA-URLENC violation stops the scan early, the rest of the body is still checked for the field.
+- Applies to every method, not only POST (stricter than PHP, which fills `$_POST` only for POST).
+- Statuses: too many variables or an oversized value 413; nesting, key length and percent-encoding 400.
 - Forward original bytes.
 
 ## 6. Multipart canonicalisation (PA-MPART, default: enforce)
@@ -295,6 +300,7 @@ state:
 php:
   upload_progress_field: PHP_SESSION_UPLOAD_PROGRESS   # session.upload_progress.name
   session_cookie_names: [PHPSESSID]                    # session.name
+  arg_separator_input: "&"                             # arg_separator.input
 
 controls:                    # global modes; hosts/routes may override
   PA-FRAME: enforce

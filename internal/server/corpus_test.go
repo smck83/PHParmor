@@ -167,6 +167,7 @@ func negativeCases() map[string]negativeCase {
 		return "--" + b + "\r\n" + strings.Join(headers, "\r\n") + "\r\n\r\nx\r\n"
 	}
 	ok := f("a", "1") + end
+	const form = "application/x-www-form-urlencoded"
 	return map[string]negativeCase{
 		"upload-progress-field": {Status: 403, Note: "session upload-progress field in multipart (PA-UPROG)",
 			raw: negReq("POST", ct, "", f("PHP_SESSION_UPLOAD_PROGRESS", "x")+f("a", "1")+end)},
@@ -202,6 +203,23 @@ func negativeCases() map[string]negativeCase {
 			raw: "POST /upload HTTP/1.1\r\nHost: corpus.test\r\nConnection: close\r\nContent-Type: " + ct + "\r\nTransfer-Encoding: chunked\r\n\r\n" + chunk(ok)},
 		"cl-and-te": {Status: 200, ReachesUpstream: true, Note: "Content-Length with Transfer-Encoding: Go treats it as chunked; forwarded re-framed",
 			raw: "POST /upload HTTP/1.1\r\nHost: corpus.test\r\nConnection: close\r\nContent-Type: " + ct + "\r\nContent-Length: 4\r\nTransfer-Encoding: chunked\r\n\r\n" + chunk(ok)},
+
+		// urlencoded bodies (PA-URLENC, M4).
+		"urlenc-upload-progress": {Status: 403, Note: "percent-encoded upload-progress key in a urlencoded body (PA-UPROG)",
+			raw: negReq("POST", form, "", "a=1&PHP%5FSESSION%5FUPLOAD%5FPROGRESS=x")},
+		"urlenc-vars-1001": {Status: 413, Note: "1001 variables, over max_vars (1000)",
+			raw: negReq("POST", form, "", strings.TrimSuffix(strings.Repeat("v=1&", 1001), "&"))},
+		"urlenc-query-plus-body": {Status: 413, Note: "600 query variables plus 401 body variables: one combined max_vars",
+			raw: strings.Replace(negReq("POST", form, "", strings.TrimSuffix(strings.Repeat("b=1&", 401), "&")),
+				"/upload ", "/upload?"+strings.TrimSuffix(strings.Repeat("q=1&", 600), "&")+" ", 1)},
+		"urlenc-deep-nesting": {Status: 400, Note: "key nested 20 levels",
+			raw: negReq("POST", form, "", "a"+strings.Repeat("%5Bx%5D", 20)+"=1")},
+		"urlenc-long-key": {Status: 400, Note: "key over max_key_length (256)",
+			raw: negReq("POST", form, "", strings.Repeat("k", 300)+"=1")},
+		"urlenc-invalid-percent": {Status: 400, Note: "invalid percent-encoding",
+			raw: negReq("POST", form, "", "a=1&b=%zz")},
+		"urlenc-comma-media-type": {Status: 400, Note: "PHP reads this as urlencoded; it must not bypass inspection",
+			raw: negReq("POST", form+",x", "", "a=%zz")},
 	}
 }
 

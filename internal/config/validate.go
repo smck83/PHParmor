@@ -59,6 +59,9 @@ func (c *Config) Validate() error {
 	}
 
 	v.check(isToken(c.PHP.UploadProgressField), "php.upload_progress_field: must be a non-empty token")
+	sep := c.PHP.ArgSeparatorInput
+	v.check(sep != "" && len(sep) <= 8 && !strings.ContainsAny(sep, "=%+[]") && printableASCII(sep),
+		"php.arg_separator_input: 1 to 8 printable characters, not '=', '%', '+', '[' or ']'")
 	v.check(len(c.PHP.SessionCookieNames) > 0, "php.session_cookie_names: at least one required")
 	for i, n := range c.PHP.SessionCookieNames {
 		v.check(isToken(n), fmt.Sprintf("php.session_cookie_names[%d]: must be a non-empty token", i))
@@ -235,6 +238,15 @@ func validHostName(h string) bool {
 			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
 				return false
 			}
+		}
+	}
+	return true
+}
+
+func printableASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x21 || s[i] > 0x7e {
+			return false
 		}
 	}
 	return true
